@@ -69,6 +69,7 @@ layout_mode = 2
 text = "Dark Mode"
 
 [node name="RowBasicControls" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=64863647]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -99,6 +100,7 @@ text = "menu button"
 layout_mode = 2
 
 [node name="RowToggles" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=725701206]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -117,6 +119,7 @@ layout_mode = 2
 color = Color(0, 0, 0, 1)
 
 [node name="RowSlider" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=2052815178]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 16
 
@@ -131,6 +134,7 @@ layout_mode = 2
 value = 50.0
 
 [node name="TabContainer" type="TabContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=983974047]
+visible = false
 layout_mode = 2
 size_flags_vertical = 3
 current_tab = 0
@@ -201,6 +205,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="RowInputs" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=2103895721]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -214,6 +219,7 @@ layout_mode = 2
 value = 3.0
 
 [node name="RowProgress" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454437]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -223,6 +229,7 @@ size_flags_horizontal = 3
 value = 50.0
 
 [node name="RowSeparators" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454438]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -238,6 +245,7 @@ text = "Separated"
 layout_mode = 2
 
 [node name="RowTextAreas" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=2144285234]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -255,6 +263,7 @@ bbcode_enabled = true
 text = "[b]Bold[/b] and [i]italic[/i] text"
 
 [node name="RowElevation" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454439]
+visible = false
 layout_mode = 2
 theme_override_constants/separation = 8
 
@@ -318,115 +327,127 @@ text = "5"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="RowM3SliderStandard" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454440]
+[node name="M3Slider_Hbox" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=2112623371]
+layout_mode = 2
+
+[node name="M3Sliders_Horitzontal" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox" unique_id=771087841]
+layout_mode = 2
+
+[node name="RowM3SliderStandard" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454440]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderStandard" unique_id=1063255688]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderStandard" unique_id=1063255688]
 layout_mode = 2
 text = "M3Slider Standard"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderStandard" unique_id=1063255689]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderStandard" unique_id=1063255689]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
 
-[node name="RowM3SliderDiscrete" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454441]
+[node name="RowM3SliderDiscrete" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454441]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderDiscrete" unique_id=1063255690]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderDiscrete" unique_id=1063255690]
 layout_mode = 2
 text = "M3Slider Discrete"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderDiscrete" unique_id=1063255691]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderDiscrete" unique_id=1063255691]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
+step = 10.0
 
-[node name="RowM3SliderRange" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454442]
+[node name="RowM3SliderRange" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454442]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderRange" unique_id=1063255692]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderRange" unique_id=1063255692]
 layout_mode = 2
 text = "M3Slider Range"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderRange" unique_id=1063255693]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderRange" unique_id=1063255693]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
 slider_variant = 2
-range_value = 70.0
 
-[node name="RowM3SliderXS" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454443]
+[node name="RowM3SliderXS" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454443]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderXS" unique_id=1063255694]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderXS" unique_id=1063255694]
 layout_mode = 2
 text = "Size XS"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderXS" unique_id=1063255695]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderXS" unique_id=1063255695]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
 slider_size = 0
 
-[node name="RowM3SliderSM" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454444]
+[node name="RowM3SliderSM" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454444]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderSM" unique_id=1063255700]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderSM" unique_id=1063255700]
 layout_mode = 2
 text = "Size S"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderSM" unique_id=1063255701]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderSM" unique_id=1063255701]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
 slider_size = 1
 
-[node name="RowM3SliderMD" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454445]
+[node name="RowM3SliderMD" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454445]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderMD" unique_id=1063255702]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderMD" unique_id=1063255702]
 layout_mode = 2
 text = "Size M"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderMD" unique_id=1063255703]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderMD" unique_id=1063255703]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
+start_icon_name = "volume-high"
 
-[node name="RowM3SliderLG" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454446]
+[node name="RowM3SliderLG" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454446]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderLG" unique_id=1063255704]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderLG" unique_id=1063255704]
 layout_mode = 2
 text = "Size L"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderLG" unique_id=1063255705]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderLG" unique_id=1063255705]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
 slider_size = 3
+start_icon_name = "volume-high"
 
-[node name="RowM3SliderXL" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454447]
+[node name="RowM3SliderXL" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal" unique_id=53454447]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderXL" unique_id=1063255706]
+[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderXL" unique_id=1063255706]
 layout_mode = 2
 text = "Size XL"
 
-[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/RowM3SliderXL" unique_id=1063255707]
+[node name="M3Slider" type="Control" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox/M3Sliders_Horitzontal/RowM3SliderXL" unique_id=1063255707]
 layout_mode = 2
 size_flags_horizontal = 3
 script = ExtResource("2_m3slider")
 slider_size = 4
+start_icon_name = "volume-high"
+
+[node name="M3Sliders_Vertical" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Slider_Hbox" unique_id=1206233288]
+layout_mode = 2
 
 [node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=40421176]
 custom_minimum_size = Vector2(0, 150)

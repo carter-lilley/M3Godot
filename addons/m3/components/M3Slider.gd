@@ -24,8 +24,11 @@ enum LabelBehavior { ALWAYS, WHILE_DRAGGING, NEVER }
 	set(value):
 		slider_variant = value
 		_update_theme()
+		var is_range = slider_variant == Variant.RANGE
+		if _track_hitbox:
+			_track_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS if is_range else Control.MOUSE_FILTER_IGNORE
 		if _range_hitbox:
-			_range_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS if slider_variant == Variant.RANGE else Control.MOUSE_FILTER_IGNORE
+			_range_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS if is_range else Control.MOUSE_FILTER_IGNORE
 		if _overlay:
 			_overlay.queue_redraw()
 
@@ -61,10 +64,23 @@ enum LabelBehavior { ALWAYS, WHILE_DRAGGING, NEVER }
 		_update_icons()
 
 @export var range_value: float = 0.0:
-	set(value):
-		range_value = clamp(value, _effective_min, _effective_max)
+	set(v):
+		# Prevent crossing: range_value can never exceed value in RANGE mode
+		var max_val = _effective_max
+		if slider_variant == Variant.RANGE:
+			max_val = min(max_val, value)
+		range_value = clamp(v, _effective_min, max_val)
+		_update_range_hitbox_position()
 		if _overlay:
 			_overlay.queue_redraw()
+
+@export var editable: bool = true:
+	get: return _slider.editable if _slider else true
+	set(v):
+		if _slider:
+			_slider.editable = v
+			if _overlay:
+				_overlay.queue_redraw()
 
 # Proxy properties
 @export var min_value: float = 0.0:
@@ -86,8 +102,9 @@ enum LabelBehavior { ALWAYS, WHILE_DRAGGING, NEVER }
 				_overlay.queue_redraw()
 
 @export var step: float = 1.0:
-	get: return _slider.step if _slider else 1.0
+	get: return _slider.step if _slider else _effective_step
 	set(v):
+		_effective_step = v
 		if _slider:
 			_slider.step = v
 			if _overlay:
@@ -97,6 +114,9 @@ enum LabelBehavior { ALWAYS, WHILE_DRAGGING, NEVER }
 	get: return _slider.value if _slider else 0.0
 	set(v):
 		if _slider:
+			# Prevent crossing: value can never go below range_value in RANGE mode
+			if slider_variant == Variant.RANGE:
+				v = max(v, range_value)
 			_slider.value = v
 			if _overlay:
 				_overlay.queue_redraw()
@@ -107,6 +127,7 @@ enum LabelBehavior { ALWAYS, WHILE_DRAGGING, NEVER }
 
 var _slider: HSlider
 var _overlay: Control
+var _track_hitbox: Control
 var _range_hitbox: Control
 var _bubble: PanelContainer
 var _bubble_label: Label
@@ -114,9 +135,13 @@ var _start_icon: FontIcon
 var _end_icon: FontIcon
 var _is_dragging: bool = false
 var _is_dragging_range: bool = false
+var _is_dragging_primary: bool = false
+var _is_focused: bool = false
+var _prev_value: float = 0.0  # Value before current drag/click interaction
 
 var _effective_min: float = 0.0
 var _effective_max: float = 100.0
+var _effective_step: float = 1.0
 
 # ============================================
 # M3 EXPRESSIVE SIZE SPECS (all values in dp)
@@ -165,6 +190,9 @@ const SIZE_SPECS = {
 	},
 }
 
+const THUMB_TRACK_GAP := 6.0  # dp
+const INSIDE_CORNER_SIZE := 2.0  # dp
+
 const LABEL_WIDTH := 48
 const LABEL_HEIGHT := 44
 
@@ -172,6 +200,12 @@ signal value_changed(value: float)
 signal range_value_changed(value: float)
 signal drag_started
 signal drag_ended(value_changed: bool)
+
+## Get the current range as a Vector2 (x=min, y=max)
+func get_range() -> Vector2:
+	if slider_variant == Variant.RANGE:
+		return Vector2(min(value, range_value), max(value, range_value))
+	return Vector2(value, value)
 
 
 
@@ -185,13 +219,25 @@ func _ready():
 	_update_theme()
 	_connect_signals()
 	
+	# Enable internal processing to poll HSlider focus state
+	set_process_internal(true)
+	
+	# Apply initial values that were set before _slider existed
+	if _slider:
+		_slider.min_value = _effective_min
+		_slider.max_value = _effective_max
+		_slider.step = _effective_step
+		_slider.value = value
+		_slider.editable = editable
+		_prev_value = value
+	
 	# Size children to fill initial parent size
 	if _slider:
 		_slider.size = size
 	if _overlay:
 		_overlay.size = size
-	if _range_hitbox:
-		_range_hitbox.size = size
+	
+	_update_range_hitbox_position()
 	
 	if _overlay:
 		_overlay.queue_redraw()
@@ -210,8 +256,8 @@ func _create_all_children():
 	# Configure nodes
 	# ============================================
 	
-	# HSlider - handles all native input but is visually hidden
-	# We draw everything custom in the overlay
+	# HSlider handles all native input including keyboard/controller
+	# It's visually hidden but must be focusable for input
 	_slider.modulate = Color.TRANSPARENT
 	_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_slider.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -221,7 +267,8 @@ func _create_all_children():
 	_overlay.z_index = 1
 	_overlay.draw.connect(_on_overlay_draw)
 	
-	# Range hitbox - captures input for range slider's second handle
+	# Range hitbox - small control that follows the range handle
+	# Only captures input when hovering over the range handle area
 	_range_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS if slider_variant == Variant.RANGE else Control.MOUSE_FILTER_IGNORE
 	_range_hitbox.z_index = 2
 	_range_hitbox.gui_input.connect(_on_range_hitbox_input)
@@ -243,9 +290,11 @@ func _create_all_children():
 	# Icons
 	_start_icon.visible = false
 	_start_icon.icon_settings = FontIconSettings.new()
+	_start_icon.z_index = 3
 	
 	_end_icon.visible = false
 	_end_icon.icon_settings = FontIconSettings.new()
+	_end_icon.z_index = 3
 	
 	# ============================================
 	# Add children in render/input order
@@ -266,9 +315,14 @@ func _notification(what: int):
 			_slider.size = size
 		if _overlay:
 			_overlay.size = size
-		if _range_hitbox:
-			_range_hitbox.size = size
+		_update_range_hitbox_position()
 		_update_bubble()
+	# Check HSlider focus state each frame for controller/keyboard focus
+	elif what == NOTIFICATION_INTERNAL_PROCESS:
+		if _slider and _is_focused != _slider.has_focus():
+			_is_focused = _slider.has_focus()
+			if _overlay:
+				_overlay.queue_redraw()
 
 # ============================================
 # UPDATES
@@ -278,23 +332,58 @@ func _update_icons():
 	if not _start_icon or not _end_icon:
 		return
 	
-	var icon_size = SIZE_SPECS[slider_size]["icon_size"]
+	var icon_size_dp = SIZE_SPECS[slider_size]["icon_size"]
+	var icon_size_px = M3Units.dpi(icon_size_dp)
 	
-	if icon_size > 0 and start_icon_name:
+	if icon_size_dp > 0 and start_icon_name:
 		_start_icon.visible = true
 		_start_icon.icon_settings.icon_name = start_icon_name
-		_start_icon.icon_settings.icon_size = icon_size
-		_start_icon.icon_settings.icon_color = M3Theme.get_on_surface()
+		_start_icon.icon_settings.icon_size = icon_size_px
+		_start_icon.icon_settings.outline_color = Color.TRANSPARENT
+		_start_icon.icon_settings.shadow_color = Color.TRANSPARENT
+		_update_icon_color(_start_icon, true)
 	else:
 		_start_icon.visible = false
 	
-	if icon_size > 0 and end_icon_name:
+	if icon_size_dp > 0 and end_icon_name:
 		_end_icon.visible = true
 		_end_icon.icon_settings.icon_name = end_icon_name
-		_end_icon.icon_settings.icon_size = icon_size
-		_end_icon.icon_settings.icon_color = M3Theme.get_on_surface()
+		_end_icon.icon_settings.icon_size = icon_size_px
+		_end_icon.icon_settings.outline_color = Color.TRANSPARENT
+		_end_icon.icon_settings.shadow_color = Color.TRANSPARENT
+		_update_icon_color(_end_icon, false)
 	else:
 		_end_icon.visible = false
+
+func _update_icon_color(icon: FontIcon, is_start: bool):
+	"""Update icon color based on whether it's in active or inactive track area."""
+	if not icon or not icon.visible:
+		return
+	
+	var handle_x = _get_handle_center_x(value)
+	var track_rect = _get_track_rect()
+	var padding = M3Units.dp(8)
+	
+	# Calculate icon center position
+	var icon_x: float
+	if is_start:
+		icon_x = track_rect.position.x + padding + icon.size.x / 2
+	else:
+		icon_x = track_rect.end.x - padding - icon.size.x / 2
+	
+	# Determine if icon is in active or inactive track
+	var is_active = icon_x < handle_x
+	
+	# Set color based on track state (with disabled state support)
+	var new_color
+	if is_active:
+		new_color = _get_disabled_color(M3Theme.get_on_primary())
+	else:
+		new_color = _get_disabled_color(M3Theme.get_on_surface())
+	if icon.icon_settings.icon_color != new_color:
+		icon.icon_settings.icon_color = new_color
+		# Force FontIcon to refresh
+		icon._on_icon_settings_changed()
 
 func _update_size():
 	if not _slider:
@@ -308,8 +397,23 @@ func _update_size():
 func refresh_theme():
 	"""Refresh all theme-dependent styling. Called by parent when dark mode changes."""
 	_update_label_theme()
+	_update_icons()
 	if _overlay:
 		_overlay.queue_redraw()
+
+func _update_range_hitbox_position():
+	if not _range_hitbox or slider_variant != Variant.RANGE:
+		return
+	
+	var handle_pos = _get_handle_position(range_value)
+	var hit_w = _get_handle_w() * 4
+	var hit_h = _get_handle_h() * 2
+	
+	_range_hitbox.position = Vector2(
+		handle_pos.x - hit_w / 2,
+		handle_pos.y - hit_h / 2
+	)
+	_range_hitbox.size = Vector2(hit_w, hit_h)
 
 func _update_label_theme():
 	if not _bubble:
@@ -345,13 +449,57 @@ func _connect_signals():
 # ============================================
 
 func _on_value_changed(new_value: float):
-	value_changed.emit(new_value)
+	if slider_variant == Variant.RANGE:
+		if _is_dragging_primary:
+			# Primary handle drag: just constrain range_value
+			if range_value > new_value:
+				range_value = new_value
+			value_changed.emit(new_value)
+		else:
+			# Track click (jump): move nearest handle using PRE-click positions
+			var dist_to_primary = abs(new_value - _prev_value)
+			var dist_to_range = abs(new_value - range_value)
+			if dist_to_range < dist_to_primary:
+				# Range handle is closer: move it, restore primary
+				range_value = new_value
+				# Restore HSlider to primary handle's pre-click position
+				if _slider:
+					_slider.set_block_signals(true)
+					_slider.value = _prev_value
+					_slider.set_block_signals(false)
+				range_value_changed.emit(range_value)
+			else:
+				# Primary handle is closer or equal: move it, constrain range
+				if range_value > new_value:
+					range_value = new_value
+				value_changed.emit(new_value)
+	else:
+		value_changed.emit(new_value)
+	
+	# Update icon colors based on new handle position
+	_update_icon_color(_start_icon, true)
+	_update_icon_color(_end_icon, false)
+	
 	if _overlay:
 		_overlay.queue_redraw()
 	_update_bubble()
 
 func _on_drag_started():
+	_prev_value = value
+	
+	# Grab focus on HSlider for keyboard/controller input
+	if _slider:
+		_slider.grab_focus()
+	
+	# Determine if user clicked on primary handle or track
+	# HSlider emits drag_started BEFORE changing value, so 'value' is still old
+	var mouse_local = get_global_mouse_position() - global_position
+	var primary_x = _get_handle_center_x(value)
+	var hit_radius = _get_handle_w() * 3  # Generous hit area
+	var is_on_handle = abs(mouse_local.x - primary_x) <= hit_radius
+	
 	_is_dragging = true
+	_is_dragging_primary = is_on_handle
 	drag_started.emit()
 	if _overlay:
 		_overlay.queue_redraw()
@@ -359,6 +507,8 @@ func _on_drag_started():
 
 func _on_drag_ended(_value_changed: bool):
 	_is_dragging = false
+	_is_dragging_primary = false
+	_prev_value = value  # Update prev_value for next interaction
 	drag_ended.emit(_value_changed)
 	if _overlay:
 		_overlay.queue_redraw()
@@ -409,6 +559,9 @@ func _position_bubble():
 # ============================================
 
 func _get_handle_w() -> float:
+	# When dragging or focused, use thin line (2dp) for cleaner interaction
+	if _is_dragging or _is_dragging_range or _is_focused:
+		return M3Units.dp(2)
 	return M3Units.dp(SIZE_SPECS[slider_size]["handle_w"])
 
 func _get_handle_h() -> float:
@@ -446,6 +599,11 @@ func _get_track_rect() -> Rect2:
 		Vector2(size.x, track_h)
 	)
 
+func _get_disabled_color(normal_color: Color) -> Color:
+	if not _slider or _slider.editable:
+		return normal_color
+	return M3Theme.disabled_color(normal_color)
+
 func _get_stop_positions() -> Array[float]:
 	var stops: Array[float] = []
 	if not show_stops or step <= 0:
@@ -460,7 +618,11 @@ func _get_stop_positions() -> Array[float]:
 		return stops  # Too many stops
 	
 	for i in range(count + 1):
-		stops.append(min_value + i * step)
+		var stop_val = min_value + i * step
+		# Skip first (0%) and last (100%) stops per M3 spec
+		if i == 0 or i == count:
+			continue
+		stops.append(stop_val)
 	
 	return stops
 
@@ -486,9 +648,9 @@ func _on_overlay_draw():
 	
 	_draw_primary_handle()
 	_draw_icons()
-
-const THUMB_TRACK_GAP := 6.0  # dp
-const INSIDE_CORNER_SIZE := 2.0  # dp
+	
+	if _is_focused:
+		_draw_focus_ring()
 
 func _draw_track():
 	var track_rect = _get_track_rect()
@@ -496,7 +658,7 @@ func _draw_track():
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = M3Theme.get_surface_variant()
+	var color = _get_disabled_color(M3Theme.get_surface_variant())
 	var handle_x = _get_handle_center_x(value)
 	
 	# Left inactive segment: from track start to handle - gap
@@ -523,7 +685,7 @@ func _draw_standard_active_track():
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = M3Theme.get_primary()
+	var color = _get_disabled_color(M3Theme.get_primary())
 	var handle_x = _get_handle_center_x(value)
 	
 	# Active segment: from track start to handle - gap
@@ -540,7 +702,7 @@ func _draw_centered_active_track():
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = M3Theme.get_primary()
+	var color = _get_disabled_color(M3Theme.get_primary())
 	var zero_x = _get_handle_center_x(0.0)
 	var handle_x = _get_handle_center_x(value)
 	
@@ -566,7 +728,7 @@ func _draw_zero_mark():
 	var track_rect = _get_track_rect()
 	var stop_size = _get_stop_size()
 	var y = track_rect.position.y + track_rect.size.y / 2.0
-	var color = M3Theme.get_on_surface()
+	var color = _get_disabled_color(M3Theme.get_on_surface())
 	
 	_overlay.draw_circle(Vector2(pos, y), stop_size / 2.0, color)
 
@@ -575,7 +737,7 @@ func _draw_range_active_track():
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = M3Theme.get_primary()
+	var color = _get_disabled_color(M3Theme.get_primary())
 	
 	var val1 = _get_handle_center_x(value)
 	var val2 = _get_handle_center_x(range_value)
@@ -602,8 +764,8 @@ func _draw_stops():
 	
 	var track_rect = _get_track_rect()
 	var stop_size = _get_stop_size()
-	var active_color = M3Theme.get_on_primary()
-	var inactive_color = M3Theme.get_on_surface_variant()
+	var active_color = _get_disabled_color(M3Theme.get_on_primary())
+	var inactive_color = _get_disabled_color(M3Theme.get_on_surface_variant())
 	
 	for stop in stops:
 		var pos = _get_handle_center_x(stop)
@@ -624,7 +786,7 @@ func _draw_primary_handle():
 	var handle_pos = _get_handle_position(value)
 	var handle_w = _get_handle_w()
 	var handle_h = _get_handle_h()
-	var color = M3Theme.get_primary()
+	var color = _get_disabled_color(M3Theme.get_primary())
 	
 	var rect = Rect2(
 		Vector2(handle_pos.x - handle_w / 2, handle_pos.y - handle_h / 2),
@@ -639,8 +801,8 @@ func _draw_range_handle():
 	var handle_pos = _get_handle_position(range_value)
 	var handle_w = _get_handle_w()
 	var handle_h = _get_handle_h()
-	var prim = M3Theme.get_primary()
-	var surf = M3Theme.get_surface()
+	var prim = _get_disabled_color(M3Theme.get_primary())
+	var surf = _get_disabled_color(M3Theme.get_surface())
 	
 	# Range handle: thin vertical bar with hollow center
 	var rect = Rect2(
@@ -660,6 +822,34 @@ func _draw_range_handle():
 		Vector2(inner_w, handle_h - 4)
 	)
 	_draw_rounded_rect(inner_rect, surf, inner_w / 2.0)
+
+func _draw_focus_ring():
+	"""Draw a hollow pill-shaped focus ring around the primary handle."""
+	var handle_pos = _get_handle_position(value)
+	var handle_h = _get_handle_h()
+	var ring_w = M3Units.dp(12)  # 12dp wide pill
+	var ring_h = handle_h + M3Units.dp(8)  # 8dp taller than handle
+	var ring_color = _get_disabled_color(M3Theme.get_on_surface())
+	var border_w = M3Units.dp(2)  # 2dp border width
+	
+	# Draw hollow pill using border
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color.TRANSPARENT
+	style.border_color = ring_color
+	style.border_width_left = int(border_w)
+	style.border_width_top = int(border_w)
+	style.border_width_right = int(border_w)
+	style.border_width_bottom = int(border_w)
+	style.corner_radius_top_left = int(ring_w / 2.0)
+	style.corner_radius_top_right = int(ring_w / 2.0)
+	style.corner_radius_bottom_left = int(ring_w / 2.0)
+	style.corner_radius_bottom_right = int(ring_w / 2.0)
+	
+	var rect = Rect2(
+		Vector2(handle_pos.x - ring_w / 2, handle_pos.y - ring_h / 2),
+		Vector2(ring_w, ring_h)
+	)
+	_overlay.draw_style_box(style, rect)
 
 func _draw_rounded_rect(rect: Rect2, color: Color, radius: float):
 	"""Draw a rounded rectangle with uniform corner radius."""
@@ -690,12 +880,19 @@ func _draw_icons():
 	
 	var track_rect = _get_track_rect()
 	var icon_y = track_rect.position.y + track_rect.size.y / 2.0
+	var padding = M3Units.dp(8)  # 8dp padding from track edge
 	
 	if _start_icon.visible:
-		_start_icon.position = Vector2(0, icon_y - _start_icon.size.y / 2)
+		_start_icon.position = Vector2(
+			track_rect.position.x + padding,
+			icon_y - _start_icon.size.y / 2
+		)
 	
 	if _end_icon.visible:
-		_end_icon.position = Vector2(size.x - _end_icon.size.x, icon_y - _end_icon.size.y / 2)
+		_end_icon.position = Vector2(
+			track_rect.end.x - _end_icon.size.x - padding,
+			icon_y - _end_icon.size.y / 2
+		)
 
 # ============================================
 # RANGE INPUT HANDLING
@@ -705,17 +902,20 @@ func _on_range_hitbox_input(event: InputEvent):
 	if slider_variant != Variant.RANGE:
 		return
 	
+	# Convert event position from hitbox-local to parent-local (M3Slider space)
+	var local_pos = event.position + _range_hitbox.position
+	
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				var range_handle_pos = _get_handle_position(range_value)
-				var hit_w = _get_handle_w() * 3  # Generous hit area
-				var hit_h = _get_handle_h() * 1.5
+				var hit_w = _get_handle_w() * 4
+				var hit_h = _get_handle_h() * 2
 				var hit_rect = Rect2(
 					Vector2(range_handle_pos.x - hit_w / 2, range_handle_pos.y - hit_h / 2),
 					Vector2(hit_w, hit_h)
 				)
-				if hit_rect.has_point(event.position):
+				if hit_rect.has_point(local_pos):
 					_is_dragging_range = true
 					accept_event()
 			else:
@@ -726,12 +926,16 @@ func _on_range_hitbox_input(event: InputEvent):
 	elif event is InputEventMouseMotion:
 		if _is_dragging_range:
 			var track = _get_track_rect()
-			var ratio = clamp((event.position.x - track.position.x) / track.size.x, 0.0, 1.0)
+			var ratio = clamp((local_pos.x - track.position.x) / track.size.x, 0.0, 1.0)
 			var new_val = lerpf(min_value, max_value, ratio)
 			if step > 0:
 				new_val = snappedf(new_val, step)
+			# Prevent range handle from crossing above primary handle
+			new_val = min(new_val, value)
 			range_value = clamp(new_val, min_value, max_value)
 			range_value_changed.emit(range_value)
+			_update_icon_color(_start_icon, true)
+			_update_icon_color(_end_icon, false)
 			if _overlay:
 				_overlay.queue_redraw()
 			accept_event()
