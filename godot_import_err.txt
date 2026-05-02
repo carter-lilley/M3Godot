@@ -1,0 +1,18 @@
+WARNING: res://addons/icons-fonts/icon_finder/IconFinder.tscn:4 - ext_resource, invalid UID: uid://bbfeoo2kuf30n - using text path instead: res://addons/icons-fonts/icons_fonts/MaterialIcons/material_design_icons.ttf
+   at: load (scene/resources/resource_format_text.cpp:500)
+   GDScript backtrace (most recent call first):
+       [0] _enter_tree (res://addons/icons-fonts/icons_fonts.gd:47)
+WARNING: res://addons/icons-fonts/icon_finder/IconFinder.tscn:6 - ext_resource, invalid UID: uid://be10y8fgoiayy - using text path instead: res://addons/icons-fonts/icons_fonts/emojis/NotoColorEmoji.ttf
+   at: load (scene/resources/resource_format_text.cpp:500)
+   GDScript backtrace (most recent call first):
+       [0] _enter_tree (res://addons/icons-fonts/icons_fonts.gd:47)
+ERROR: The Command 'Icon Finder Window' doesn't exists. Unable to remove it.
+   at: remove_command (editor/settings/editor_command_palette.cpp:229)
+   GDScript backtrace (most recent call first):
+       [0] _exit_tree (res://addons/icons-fonts/icons_fonts.gd:94)
+ERROR: The Command 'Icon Finder Dock' doesn't exists. Unable to remove it.
+   at: remove_command (editor/settings/editor_command_palette.cpp:229)
+   GDScript backtrace (most recent call first):
+       [0] _exit_tree (res://addons/icons-fonts/icons_fonts.gd:94)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+   at: cleanup (core/object/object.cpp:2641)
