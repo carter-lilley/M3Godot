@@ -26,12 +26,10 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		slider_variant = value
 		_update_theme()
 		var is_range = slider_variant == Variant.RANGE
-		if _track_hitbox:
-			_track_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS if is_range else Control.MOUSE_FILTER_IGNORE
 		if _range_hitbox:
 			_range_hitbox.mouse_filter = Control.MOUSE_FILTER_PASS if is_range else Control.MOUSE_FILTER_IGNORE
-		if _overlay:
-			_overlay.queue_redraw()
+		_request_redraw()
+		_invalidate_stop_cache()
 
 @export var orientation: SliderOrientation = SliderOrientation.HORIZONTAL:
 	set(value):
@@ -42,16 +40,16 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 			_slider = null
 		_create_slider()
 		_update_size()
-		if _overlay:
-			_overlay.queue_redraw()
+		_request_redraw()
+		_invalidate_stop_cache()
 
 @export var slider_size: Size = Size.MEDIUM:
 	set(value):
 		slider_size = value
 		_update_size()
 		_update_theme()
-		if _overlay:
-			_overlay.queue_redraw()
+		_request_redraw()
+		_invalidate_stop_cache()
 
 @export var label_behavior: LabelBehavior = LabelBehavior.WHILE_DRAGGING:
 	set(value):
@@ -63,8 +61,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 @export var show_stops: bool = true:
 	set(value):
 		show_stops = value
-		if _overlay:
-			_overlay.queue_redraw()
+		_request_redraw()
+		_invalidate_stop_cache()
 
 @export var start_icon_name: String = "":
 	set(value):
@@ -84,16 +82,15 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 			max_val = min(max_val, value)
 		range_value = clamp(v, _effective_min, max_val)
 		_update_range_hitbox_position()
-		if _overlay:
-			_overlay.queue_redraw()
+		_request_redraw()
 
 @export var editable: bool = true:
 	get: return _slider.editable if _slider else true
 	set(v):
 		if _slider:
 			_slider.editable = v
-			if _overlay:
-				_overlay.queue_redraw()
+			_invalidate_color_cache()
+			_request_redraw()
 
 # Proxy properties
 @export var min_value: float = 0.0:
@@ -102,8 +99,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_effective_min = v
 		if _slider:
 			_slider.min_value = v
-			if _overlay:
-				_overlay.queue_redraw()
+			_request_redraw()
+			_invalidate_stop_cache()
 
 @export var max_value: float = 100.0:
 	get: return _slider.max_value if _slider else _effective_max
@@ -111,8 +108,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_effective_max = v
 		if _slider:
 			_slider.max_value = v
-			if _overlay:
-				_overlay.queue_redraw()
+			_request_redraw()
+			_invalidate_stop_cache()
 
 @export var step: float = 0.0:
 	get: return _slider.step if _slider else _effective_step
@@ -120,8 +117,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_effective_step = v
 		if _slider:
 			_slider.step = v
-			if _overlay:
-				_overlay.queue_redraw()
+			_request_redraw()
+			_invalidate_stop_cache()
 
 @export var value: float = 0.0:
 	get: return _slider.value if _slider else 0.0
@@ -131,8 +128,7 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 			if slider_variant == Variant.RANGE:
 				v = max(v, range_value)
 			_slider.value = v
-			if _overlay:
-				_overlay.queue_redraw()
+			_request_redraw()
 
 # ============================================
 # INTERNAL
@@ -140,7 +136,6 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 
 var _slider: Slider
 var _overlay: Control
-var _track_hitbox: Control
 var _range_hitbox: Control
 var _bubble: PanelContainer
 var _bubble_label: Label
@@ -155,6 +150,25 @@ var _prev_value: float = 0.0  # Value before current drag/click interaction
 var _effective_min: float = 0.0
 var _effective_max: float = 100.0
 var _effective_step: float = 1.0
+
+# Cached StyleBoxFlat instances (allocated once, mutated each frame)
+var _cached_style_rect: StyleBoxFlat
+var _cached_style_circle: StyleBoxFlat
+var _cached_style_focus: StyleBoxFlat
+
+# Cached theme resources
+var _cached_font: Font
+var _cached_colors: Dictionary = {}
+var _cached_disabled_editable: bool = true
+
+# Cached geometry (invalidated each draw)
+var _cached_track_rect: Rect2
+var _cached_handle_axis: float
+var _cached_perp_center: float
+
+# Cached stop positions
+var _cached_stops: Array[float] = []
+var _cached_stops_valid: bool = false
 
 # ============================================
 # M3 EXPRESSIVE SIZE SPECS (all values in dp)
@@ -214,6 +228,17 @@ signal range_value_changed(value: float)
 signal drag_started
 signal drag_ended(value_changed: bool)
 
+func _request_redraw():
+	if _overlay:
+		_overlay.queue_redraw()
+
+func _invalidate_stop_cache():
+	_cached_stops_valid = false
+
+func _invalidate_color_cache():
+	_cached_colors.clear()
+	_cached_disabled_editable = _slider.editable if _slider else true
+
 ## Get the current range as a Vector2 (x=min, y=max)
 func get_range() -> Vector2:
 	if slider_variant == Variant.RANGE:
@@ -227,13 +252,11 @@ func get_range() -> Vector2:
 # ============================================
 
 func _ready():
+	_initialize_caches()
 	_create_all_children()
 	_update_size()
 	_update_theme()
 	_connect_signals()
-	
-	# Enable internal processing to poll HSlider focus state
-	set_process_internal(true)
 	
 	# Apply initial values that were set before _slider existed
 	if _slider:
@@ -251,9 +274,19 @@ func _ready():
 		_overlay.size = size
 	
 	_update_range_hitbox_position()
+	_request_redraw()
+
+func _initialize_caches():
+	# Pre-allocate StyleBoxFlat instances for reuse
+	_cached_style_rect = StyleBoxFlat.new()
+	_cached_style_circle = StyleBoxFlat.new()
+	_cached_style_focus = StyleBoxFlat.new()
 	
-	if _overlay:
-		_overlay.queue_redraw()
+	# Cache font reference (avoid reloading on every theme refresh)
+	_cached_font = M3Theme.load_fonts()["bold"]
+	
+	# Initialize color cache
+	_invalidate_color_cache()
 
 func _create_all_children():
 	# Create all nodes
@@ -288,7 +321,7 @@ func _create_all_children():
 	
 	_bubble_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_bubble_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_bubble_label.add_theme_font_override("font", M3Theme.load_fonts()["bold"])
+	_bubble_label.add_theme_font_override("font", _cached_font)
 	_bubble_label.add_theme_font_size_override("font_size", M3Theme.TYPE_LABEL_MEDIUM)
 	
 	_bubble.add_child(_bubble_label)
@@ -341,12 +374,6 @@ func _notification(what: int):
 			_overlay.size = size
 		_update_range_hitbox_position()
 		_update_bubble()
-	# Check HSlider focus state each frame for controller/keyboard focus
-	elif what == NOTIFICATION_INTERNAL_PROCESS:
-		if _slider and _is_focused != _slider.has_focus():
-			_is_focused = _slider.has_focus()
-			if _overlay:
-				_overlay.queue_redraw()
 
 # ============================================
 # UPDATES
@@ -357,7 +384,7 @@ func _update_icons():
 		return
 	
 	var icon_size_dp = SIZE_SPECS[slider_size]["icon_size"]
-	var icon_size_px = M3Units.dpi(icon_size_dp)
+	var icon_size_px = M3Units.dp(icon_size_dp)
 	
 	if icon_size_dp > 0 and start_icon_name:
 		_start_icon.visible = true
@@ -440,13 +467,15 @@ func _update_size():
 
 func refresh_theme():
 	"""Refresh all theme-dependent styling. Called by parent when dark mode changes."""
+	_invalidate_color_cache()
 	_update_label_theme()
 	_update_icons()
-	if _overlay:
-		_overlay.queue_redraw()
+	_request_redraw()
 
 func _update_range_hitbox_position():
-	if not _range_hitbox or slider_variant != Variant.RANGE:
+	if slider_variant != Variant.RANGE:
+		return
+	if not _range_hitbox:
 		return
 	
 	var handle_pos = _get_handle_position(range_value)
@@ -493,6 +522,12 @@ func _connect_signals():
 	_slider.value_changed.connect(_on_value_changed)
 	_slider.drag_started.connect(_on_drag_started)
 	_slider.drag_ended.connect(_on_drag_ended)
+	_slider.focus_entered.connect(_on_focus_changed.bind(true))
+	_slider.focus_exited.connect(_on_focus_changed.bind(false))
+
+func _on_focus_changed(has_focus: bool):
+	_is_focused = has_focus
+	_request_redraw()
 
 # ============================================
 # SIGNAL HANDLERS
@@ -530,22 +565,18 @@ func _on_value_changed(new_value: float):
 	_update_icon_color(_start_icon, true)
 	_update_icon_color(_end_icon, false)
 	
-	if _overlay:
-		_overlay.queue_redraw()
+	_request_redraw()
 	_update_bubble()
 
 func _on_drag_started():
 	_prev_value = value
 	
-	# Grab focus on HSlider for keyboard/controller input
 	if _slider:
 		_slider.grab_focus()
 	
-	# Determine if user clicked on primary handle or track
-	# HSlider emits drag_started BEFORE changing value, so 'value' is still old
 	var mouse_local = get_global_mouse_position() - global_position
-	var primary_axis = _get_axis_position(value)
-	var hit_radius = _get_handle_w() * 3  # Generous hit area
+	var primary_axis = _cached_handle_axis if _overlay else _get_axis_position(value)
+	var hit_radius = _get_handle_w() * 3
 	var is_on_handle: bool
 	if _is_vertical():
 		is_on_handle = abs(mouse_local.y - primary_axis) <= hit_radius
@@ -555,17 +586,15 @@ func _on_drag_started():
 	_is_dragging = true
 	_is_dragging_primary = is_on_handle
 	drag_started.emit()
-	if _overlay:
-		_overlay.queue_redraw()
+	_request_redraw()
 	_update_bubble()
 
 func _on_drag_ended(_value_changed: bool):
 	_is_dragging = false
 	_is_dragging_primary = false
-	_prev_value = value  # Update prev_value for next interaction
+	_prev_value = value
 	drag_ended.emit(_value_changed)
-	if _overlay:
-		_overlay.queue_redraw()
+	_request_redraw()
 	_update_bubble()
 
 # ============================================
@@ -717,31 +746,45 @@ func _get_track_rect() -> Rect2:
 		)
 
 func _get_disabled_color(normal_color: Color) -> Color:
+	var color_key = str(normal_color)
+	if _cached_colors.has(color_key):
+		return _cached_colors[color_key]
+	
+	var result: Color
 	if not _slider or _slider.editable:
-		return normal_color
-	return M3Theme.disabled_color(normal_color)
+		result = normal_color
+	else:
+		result = M3Theme.disabled_color(normal_color)
+	
+	_cached_colors[color_key] = result
+	return result
 
 func _get_stop_positions() -> Array[float]:
-	var stops: Array[float] = []
+	if _cached_stops_valid:
+		return _cached_stops
+	
+	_cached_stops.clear()
+	
 	if not show_stops or step <= 0:
-		return stops
+		_cached_stops_valid = true
+		return _cached_stops
 	
 	var range_val = max_value - min_value
 	if range_val <= 0:
-		return stops
+		_cached_stops_valid = true
+		return _cached_stops
 	
 	var count = int(range_val / step)
 	if count > 50:
-		return stops  # Too many stops
+		_cached_stops_valid = true
+		return _cached_stops  # Too many stops
 	
-	for i in range(count + 1):
-		var stop_val = min_value + i * step
-		# Skip first (0%) and last (100%) stops per M3 spec
-		if i == 0 or i == count:
-			continue
-		stops.append(stop_val)
+	_cached_stops.resize(count - 1)
+	for i in range(1, count):
+		_cached_stops[i - 1] = min_value + i * step
 	
-	return stops
+	_cached_stops_valid = true
+	return _cached_stops
 
 # ============================================
 # CUSTOM DRAWING
@@ -750,6 +793,11 @@ func _get_stop_positions() -> Array[float]:
 func _on_overlay_draw():
 	if not _slider:
 		return
+	
+	# Cache geometry once per draw
+	_cached_track_rect = _get_track_rect()
+	_cached_handle_axis = _get_axis_position(value)
+	_cached_perp_center = _get_perp_center()
 	
 	_draw_track()
 	
@@ -771,110 +819,94 @@ func _on_overlay_draw():
 		_draw_focus_ring()
 
 func _draw_track():
-	var track_rect = _get_track_rect()
+	var track_rect = _cached_track_rect
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
 	var color = _get_disabled_color(M3Theme.get_surface_variant())
-	var handle_axis = _get_axis_position(value)
+	var handle_axis = _cached_handle_axis
 	
 	if _is_vertical():
 		# Vertical: top and bottom inactive segments
-		# Top inactive: from track top to handle - gap
 		var top_h = handle_axis - gap - track_rect.position.y
 		if top_h > 0:
-			var top_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(track_rect.position.x, track_rect.position.y),
 				Vector2(track_rect.size.x, top_h)
-			)
-			_draw_rounded_rect_asymmetric(top_rect, color, out_radius, out_radius, in_radius, in_radius)
+			), color, out_radius, out_radius, in_radius, in_radius)
 		
-		# Bottom inactive: from handle + gap to track bottom
 		var bottom_start = handle_axis + gap
 		var bottom_h = track_rect.end.y - bottom_start
 		if bottom_h > 0:
-			var bottom_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(track_rect.position.x, bottom_start),
 				Vector2(track_rect.size.x, bottom_h)
-			)
-			_draw_rounded_rect_asymmetric(bottom_rect, color, in_radius, in_radius, out_radius, out_radius)
+			), color, in_radius, in_radius, out_radius, out_radius)
 	else:
 		# Horizontal: left and right inactive segments
-		# Left inactive: from track start to handle - gap
 		var left_w = handle_axis - gap - track_rect.position.x
 		if left_w > 0:
-			var left_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(track_rect.position.x, track_rect.position.y),
 				Vector2(left_w, track_rect.size.y)
-			)
-			_draw_rounded_rect_asymmetric(left_rect, color, out_radius, in_radius, out_radius, in_radius)
+			), color, out_radius, in_radius, out_radius, in_radius)
 		
-		# Right inactive: from handle + gap to track end
 		var right_start = handle_axis + gap
 		var right_w = track_rect.end.x - right_start
 		if right_w > 0:
-			var right_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(right_start, track_rect.position.y),
 				Vector2(right_w, track_rect.size.y)
-			)
-			_draw_rounded_rect_asymmetric(right_rect, color, in_radius, out_radius, in_radius, out_radius)
+			), color, in_radius, out_radius, in_radius, out_radius)
 
 func _draw_standard_active_track():
-	var track_rect = _get_track_rect()
+	var track_rect = _cached_track_rect
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
 	var color = _get_disabled_color(M3Theme.get_primary())
-	var handle_axis = _get_axis_position(value)
+	var handle_axis = _cached_handle_axis
 	
 	if _is_vertical():
-		# Vertical: active from track bottom to handle + gap
 		var active_h = track_rect.end.y - handle_axis - gap
 		if active_h > 0:
-			var active_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(track_rect.position.x, handle_axis + gap),
 				Vector2(track_rect.size.x, active_h)
-			)
-			_draw_rounded_rect_asymmetric(active_rect, color, in_radius, in_radius, out_radius, out_radius)
+			), color, in_radius, in_radius, out_radius, out_radius)
 	else:
-		# Horizontal: active from track start to handle - gap
 		var active_w = handle_axis - gap - track_rect.position.x
 		if active_w > 0:
-			var active_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(track_rect.position.x, track_rect.position.y),
 				Vector2(active_w, track_rect.size.y)
-			)
-			_draw_rounded_rect_asymmetric(active_rect, color, out_radius, in_radius, out_radius, in_radius)
+			), color, out_radius, in_radius, out_radius, in_radius)
 
 func _draw_centered_active_track():
-	var track_rect = _get_track_rect()
-	var out_radius = _get_track_radius()
+	var track_rect = _cached_track_rect
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
 	var color = _get_disabled_color(M3Theme.get_primary())
 	var zero_axis = _get_axis_position(0.0)
-	var handle_axis = _get_axis_position(value)
+	var handle_axis = _cached_handle_axis
 	
-	# Active segment from zero to handle, with gap on both sides
 	var start_axis = min(zero_axis, handle_axis) + gap
 	var end_axis = max(zero_axis, handle_axis) - gap
 	
 	if _is_vertical():
 		var active_h = end_axis - start_axis
 		if active_h > 0:
-			var active_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(track_rect.position.x, start_axis),
 				Vector2(track_rect.size.x, active_h)
-			)
-			_draw_rounded_rect_asymmetric(active_rect, color, in_radius, in_radius, in_radius, in_radius)
+			), color, in_radius, in_radius, in_radius, in_radius)
 	else:
 		var active_w = end_axis - start_axis
 		if active_w > 0:
-			var active_rect = Rect2(
+			_draw_rounded_rect_asymmetric(Rect2(
 				Vector2(start_axis, track_rect.position.y),
 				Vector2(active_w, track_rect.size.y)
-			)
-			_draw_rounded_rect_asymmetric(active_rect, color, in_radius, in_radius, in_radius, in_radius)
+			), color, in_radius, in_radius, in_radius, in_radius)
 
 func _draw_zero_mark():
 	var zero_value = 0.0
@@ -882,32 +914,28 @@ func _draw_zero_mark():
 		return
 	
 	var pos = _get_axis_position(zero_value)
-	var track_rect = _get_track_rect()
 	var stop_size = _get_stop_size()
-	var center = _get_perp_center()
+	var center = _cached_perp_center
 	var color = _get_disabled_color(M3Theme.get_on_surface())
-	var stop_rect: Rect2
 	
 	if _is_vertical():
-		stop_rect = Rect2(
+		_draw_smooth_circle(Rect2(
 			Vector2(center - stop_size / 2.0, pos - stop_size / 2.0),
 			Vector2(stop_size, stop_size)
-		)
+		), color)
 	else:
-		stop_rect = Rect2(
+		_draw_smooth_circle(Rect2(
 			Vector2(pos - stop_size / 2.0, center - stop_size / 2.0),
 			Vector2(stop_size, stop_size)
-		)
-	_draw_smooth_circle(stop_rect, color)
+		), color)
 
 func _draw_range_active_track():
-	var track_rect = _get_track_rect()
-	var out_radius = _get_track_radius()
+	var track_rect = _cached_track_rect
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
 	var color = _get_disabled_color(M3Theme.get_primary())
 	
-	var val1 = _get_axis_position(value)
+	var val1 = _cached_handle_axis
 	var val2 = _get_axis_position(range_value)
 	
 	var start_axis = min(val1, val2) + gap
@@ -938,11 +966,10 @@ func _draw_stops():
 	if stops.size() <= 2:
 		return
 	
-	var track_rect = _get_track_rect()
 	var stop_size = _get_stop_size()
 	var active_color = _get_disabled_color(M3Theme.get_on_primary())
 	var inactive_color = _get_disabled_color(M3Theme.get_on_surface_variant())
-	var center = _get_perp_center()
+	var center = _cached_perp_center
 	
 	for stop in stops:
 		var pos = _get_axis_position(stop)
@@ -956,31 +983,28 @@ func _draw_stops():
 			is_active = stop <= value
 		
 		var color = active_color if is_active else inactive_color
-		var stop_rect: Rect2
 		if _is_vertical():
-			stop_rect = Rect2(
+			_draw_smooth_circle(Rect2(
 				Vector2(center - stop_size / 2.0, pos - stop_size / 2.0),
 				Vector2(stop_size, stop_size)
-			)
+			), color)
 		else:
-			stop_rect = Rect2(
+			_draw_smooth_circle(Rect2(
 				Vector2(pos - stop_size / 2.0, center - stop_size / 2.0),
 				Vector2(stop_size, stop_size)
-			)
-		_draw_smooth_circle(stop_rect, color)
+			), color)
 
 func _draw_end_indicator():
 	"""Draw end-of-track indicator dot at max value position. Not shown on discrete sliders."""
 	if _get_stop_positions().size() > 0:
 		return
 	
-	var track_rect = _get_track_rect()
+	var track_rect = _cached_track_rect
 	var stop_size = _get_stop_size()
 	var gap = M3Units.dp(4)
-	var center = _get_perp_center()
+	var center = _cached_perp_center
 	var end_value = max_value
 	
-	# Determine if dot is in active track (same logic as stops)
 	var is_active = false
 	if slider_variant == Variant.CENTERED:
 		is_active = (end_value >= min(value, 0.0) and end_value <= max(value, 0.0))
@@ -991,26 +1015,21 @@ func _draw_end_indicator():
 	
 	var color = _get_disabled_color(M3Theme.get_on_primary() if is_active else M3Theme.get_on_surface_variant())
 	
-	var dot_rect: Rect2
 	if _is_vertical():
-		# Vertical: dot at top (max), inset from top edge
-		dot_rect = Rect2(
+		_draw_smooth_circle(Rect2(
 			Vector2(center - stop_size / 2.0, track_rect.position.y + gap),
 			Vector2(stop_size, stop_size)
-		)
+		), color)
 	else:
-		# Horizontal: dot at right (max), inset from right edge
-		dot_rect = Rect2(
+		_draw_smooth_circle(Rect2(
 			Vector2(track_rect.end.x - gap - stop_size, center - stop_size / 2.0),
 			Vector2(stop_size, stop_size)
-		)
-	
-	_draw_smooth_circle(dot_rect, color)
+		), color)
 
 func _draw_smooth_circle(rect: Rect2, color: Color):
-	"""Draw anti-aliased circle using StyleBoxFlat for smooth edges."""
+	"""Draw anti-aliased circle using cached StyleBoxFlat for smooth edges."""
 	var radius = int(min(rect.size.x, rect.size.y) / 2.0)
-	var style = StyleBoxFlat.new()
+	var style = _cached_style_circle
 	style.bg_color = color
 	style.corner_radius_top_left = radius
 	style.corner_radius_top_right = radius
@@ -1087,7 +1106,7 @@ func _draw_focus_ring():
 	var ring_color = _get_disabled_color(M3Theme.get_on_surface())
 	var border_w = M3Units.dp(2)  # 2dp border width
 	
-	var style = StyleBoxFlat.new()
+	var style = _cached_style_focus
 	style.bg_color = Color.TRANSPARENT
 	style.border_color = ring_color
 	style.border_width_left = int(border_w)
@@ -1103,11 +1122,10 @@ func _draw_focus_ring():
 		style.corner_radius_top_right = int(ring_h / 2.0)
 		style.corner_radius_bottom_left = int(ring_h / 2.0)
 		style.corner_radius_bottom_right = int(ring_h / 2.0)
-		var rect = Rect2(
+		_overlay.draw_style_box(style, Rect2(
 			Vector2(handle_pos.x - ring_w / 2, handle_pos.y - ring_h / 2),
 			Vector2(ring_w, ring_h)
-		)
-		_overlay.draw_style_box(style, rect)
+		))
 	else:
 		# Horizontal: vertical pill
 		var ring_w = M3Units.dp(12)
@@ -1116,28 +1134,19 @@ func _draw_focus_ring():
 		style.corner_radius_top_right = int(ring_w / 2.0)
 		style.corner_radius_bottom_left = int(ring_w / 2.0)
 		style.corner_radius_bottom_right = int(ring_w / 2.0)
-		var rect = Rect2(
+		_overlay.draw_style_box(style, Rect2(
 			Vector2(handle_pos.x - ring_w / 2, handle_pos.y - ring_h / 2),
 			Vector2(ring_w, ring_h)
-		)
-		_overlay.draw_style_box(style, rect)
+		))
 
 func _draw_rounded_rect(rect: Rect2, color: Color, radius: float):
 	"""Draw a rounded rectangle with uniform corner radius."""
 	_draw_rounded_rect_asymmetric(rect, color, radius, radius, radius, radius)
 
-func _draw_rounded_rect_asymmetric(rect: Rect2, color: Color, 
+func _draw_rounded_rect_asymmetric(rect: Rect2, color: Color,
 								   tl: float, tr: float, bl: float, br: float):
-	"""Draw a rounded rectangle with per-corner radius control.
-	Args:
-		rect: The rectangle to draw
-		color: Fill color
-		tl: Top-left corner radius
-		tr: Top-right corner radius
-		bl: Bottom-left corner radius
-		br: Bottom-right corner radius
-	"""
-	var style = StyleBoxFlat.new()
+	"""Draw a rounded rectangle with per-corner radius control using cached StyleBox."""
+	var style = _cached_style_rect
 	style.bg_color = color
 	style.corner_radius_top_left = int(tl)
 	style.corner_radius_top_right = int(tr)
@@ -1149,12 +1158,11 @@ func _draw_icons():
 	if not _start_icon or not _end_icon:
 		return
 	
-	var track_rect = _get_track_rect()
-	var padding = M3Units.dp(8)  # 8dp padding from track edge
-	var center = _get_perp_center()
+	var track_rect = _cached_track_rect
+	var padding = M3Units.dp(8)
+	var center = _cached_perp_center
 	
 	if _is_vertical():
-		# Vertical: start icon at bottom, end icon at top
 		if _start_icon.visible:
 			_start_icon.position = Vector2(
 				center - _start_icon.size.x / 2,
@@ -1167,7 +1175,6 @@ func _draw_icons():
 				track_rect.position.y + padding
 			)
 	else:
-		# Horizontal: start icon at left, end icon at right
 		if _start_icon.visible:
 			_start_icon.position = Vector2(
 				track_rect.position.x + padding,
@@ -1234,6 +1241,5 @@ func _on_range_hitbox_input(event: InputEvent):
 			range_value_changed.emit(range_value)
 			_update_icon_color(_start_icon, true)
 			_update_icon_color(_end_icon, false)
-			if _overlay:
-				_overlay.queue_redraw()
+			_request_redraw()
 			accept_event()

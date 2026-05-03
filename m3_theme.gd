@@ -56,6 +56,12 @@ const OUTLINE_VARIANT_LIGHT := Color("#CAC4D0")
 const OUTLINE_DARK := Color("#938F99")
 const OUTLINE_VARIANT_DARK := Color("#49454F")
 
+const INVERSE_SURFACE_LIGHT := Color("#313033")
+const INVERSE_ON_SURFACE_LIGHT := Color("#F4EFF4")
+
+const INVERSE_SURFACE_DARK := Color("#E6E1E5")
+const INVERSE_ON_SURFACE_DARK := Color("#1C1B1F")
+
 # ============================================
 # SHAPE
 # ============================================
@@ -130,8 +136,17 @@ static func get_on_primary_container() -> Color:
 static func get_secondary() -> Color:
 	return SECONDARY_DARK if is_dark_mode else SECONDARY_LIGHT
 
+static func get_on_secondary() -> Color:
+	return ON_SECONDARY_DARK if is_dark_mode else ON_SECONDARY_LIGHT
+
 static func get_secondary_container() -> Color:
 	return SECONDARY_CONTAINER_DARK if is_dark_mode else SECONDARY_CONTAINER_LIGHT
+
+static func get_on_secondary_container() -> Color:
+	return ON_SECONDARY_CONTAINER_DARK if is_dark_mode else ON_SECONDARY_CONTAINER_LIGHT
+
+static func get_surface_container_low() -> Color:
+	return get_elevation_surface(1)
 
 static func get_error() -> Color:
 	return ERROR_DARK if is_dark_mode else ERROR_LIGHT
@@ -153,6 +168,12 @@ static func get_outline() -> Color:
 
 static func get_outline_variant() -> Color:
 	return OUTLINE_VARIANT_DARK if is_dark_mode else OUTLINE_VARIANT_LIGHT
+
+static func get_inverse_surface() -> Color:
+	return INVERSE_SURFACE_DARK if is_dark_mode else INVERSE_SURFACE_LIGHT
+
+static func get_inverse_on_surface() -> Color:
+	return INVERSE_ON_SURFACE_DARK if is_dark_mode else INVERSE_ON_SURFACE_LIGHT
 
 # ============================================
 # ELEVATION
