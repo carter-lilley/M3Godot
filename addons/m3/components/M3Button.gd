@@ -2,7 +2,7 @@
 class_name M3Button
 extends Button
 
-const M3Units = preload("res://addons/m3/M3Units.gd")
+# M3Units and M3Theme are global classes, no preload needed
 
 ## Material 3 Button Component
 ## Extends native Button with M3 sizing, shapes, and variants
@@ -65,12 +65,16 @@ const SIZE_SPECS = {
 
 @export var button_variant: Variant = Variant.FILLED:
 	set(value):
+		if value == button_variant:
+			return
 		button_variant = value
 		_update_theme()
 		queue_redraw()
 
 @export var button_size: Size = Size.MEDIUM:
 	set(value):
+		if value == button_size:
+			return
 		button_size = value
 		_update_size()
 		_update_theme()
@@ -78,12 +82,16 @@ const SIZE_SPECS = {
 
 @export var button_shape: Shape = Shape.ROUNDED:
 	set(value):
+		if value == button_shape:
+			return
 		button_shape = value
 		_update_theme()
 		queue_redraw()
 
 @export var button_type: Type = Type.NORMAL:
 	set(value):
+		if value == button_type:
+			return
 		button_type = value
 		toggle_mode = (button_type == Type.TOGGLE)
 		_update_theme()
@@ -91,17 +99,18 @@ const SIZE_SPECS = {
 
 @export var icon_name: String = "":
 	set(value):
+		if value == icon_name:
+			return
 		icon_name = value
 		_update_icon()
-		_update_theme()
-		queue_redraw()
+		# _update_theme() is called by _update_icon() if visibility changes
 
 # ============================================
 # INTERNAL
 # ============================================
 
 var _icon_node: FontIcon
-var _last_icon_width: float = 0.0
+var _is_pressing: bool = false
 
 # Cached StyleBoxFlat instances (allocated once, mutated per state)
 var _cached_style_normal: StyleBoxFlat
@@ -119,12 +128,25 @@ func _ready():
 	_initialize_caches()
 	_create_icon()
 	_update_icon()  # Set icon visibility first
+	size_flags_vertical = 0  # Don't expand vertically in containers
 	_update_size()
 	_update_theme()  # Then configure styleboxes with correct visibility
-	# Trigger icon position calculation so we get actual icon width for margins
+	# Position icon once layout is stable
 	call_deferred("_update_icon_position")
-	# Connect toggle signal to update colors when toggle state changes
+	# Connect signals
 	toggled.connect(_on_toggled)
+	button_down.connect(_on_button_down)
+	button_up.connect(_on_button_up)
+
+func _on_button_down():
+	_is_pressing = true
+	_update_theme()
+	queue_redraw()
+
+func _on_button_up():
+	_is_pressing = false
+	_update_theme()
+	queue_redraw()
 
 func _initialize_caches():
 	_cached_style_normal = StyleBoxFlat.new()
@@ -151,8 +173,6 @@ func _update_size():
 	var height_px = M3Units.dp(spec["height"])
 	var icon_size_px = M3Units.dp(spec["icon_size"])
 	custom_minimum_size = Vector2(custom_minimum_size.x, height_px)
-	size.y = height_px
-	size_flags_vertical = 0  # Don't expand vertically in containers
 	if _icon_node:
 		_icon_node.icon_settings.icon_size = icon_size_px
 		# Force icon node to exact icon_size so glyph is centered within fixed bounds
@@ -178,8 +198,6 @@ func _update_icon():
 
 func _on_toggled(_pressed: bool):
 	_update_theme()
-	if _icon_node and _icon_node.visible:
-		_update_icon_color()
 	queue_redraw()
 
 func _get_variant_colors(selected: bool) -> Dictionary:
@@ -197,7 +215,7 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 			result.hover_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_HOVER)
 			result.pressed_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_PRESSED)
 			result.disabled_bg = Color(M3Theme.get_surface().r, M3Theme.get_surface().g, M3Theme.get_surface().b, M3Theme.OPACITY_DISABLED)
-			result.disabled_text = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
 			result.border_w = 0
@@ -210,8 +228,8 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 				result.text = M3Theme.get_on_primary_container()
 			result.hover_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_HOVER)
 			result.pressed_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color(M3Theme.get_on_surface_variant().r, M3Theme.get_on_surface_variant().g, M3Theme.get_on_surface_variant().b, M3Theme.OPACITY_DISABLED)
-			result.disabled_text = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_bg = M3Theme.disabled_color(M3Theme.get_on_surface_variant())
+			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
 			result.border_w = 0
@@ -224,8 +242,8 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 				result.text = M3Theme.get_on_secondary_container()
 			result.hover_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_HOVER)
 			result.pressed_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color(M3Theme.get_on_surface_variant().r, M3Theme.get_on_surface_variant().g, M3Theme.get_on_surface_variant().b, M3Theme.OPACITY_DISABLED)
-			result.disabled_text = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_bg = M3Theme.disabled_color(M3Theme.get_on_surface_variant())
+			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
 			result.border_w = 0
@@ -234,27 +252,35 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 				result.bg = M3Theme.get_inverse_surface()
 				result.text = M3Theme.get_inverse_on_surface()
 				result.border_c = Color.TRANSPARENT
+				# Hover/press overlays on the actual selected bg (inverse_surface)
+				result.hover_bg = M3Theme.state_overlay(M3Theme.get_inverse_surface(), result.text, M3Theme.OPACITY_HOVER)
+				result.pressed_bg = M3Theme.state_overlay(M3Theme.get_inverse_surface(), result.text, M3Theme.OPACITY_PRESSED)
 			else:
 				result.bg = Color.TRANSPARENT
 				result.text = M3Theme.get_on_surface_variant()
 				result.border_c = M3Theme.get_outline_variant()
-			result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
-			result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
+				# Hover/press overlays on surface for unselected
+				result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
+				result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
 			result.disabled_bg = Color.TRANSPARENT
-			result.disabled_text = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_w = 1
 		Variant.TEXT:
 			if selected:
 				result.bg = M3Theme.get_primary_container()
 				result.text = M3Theme.get_on_primary_container()
+				# Hover/press overlays on the actual selected bg (primary_container)
+				result.hover_bg = M3Theme.state_overlay(M3Theme.get_primary_container(), result.text, M3Theme.OPACITY_HOVER)
+				result.pressed_bg = M3Theme.state_overlay(M3Theme.get_primary_container(), result.text, M3Theme.OPACITY_PRESSED)
 			else:
 				result.bg = Color.TRANSPARENT
 				result.text = M3Theme.get_on_surface_variant()
-			result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
-			result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
+				# Hover/press overlays on surface for unselected
+				result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
+				result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
 			result.disabled_bg = Color.TRANSPARENT
-			result.disabled_text = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
 			result.border_w = 0
@@ -312,9 +338,8 @@ func _update_theme():
 	_configure_stylebox(_cached_style_hover, hover_bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	add_theme_stylebox_override("hover", _cached_style_hover)
 	
-	# Pressed state (elevated drops shadow on press)
-	var pressed_shadow_size: int = 0 if button_variant == Variant.ELEVATED else shadow_size
-	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, border_w, border_c, pressed_shadow_size, shadow_off, shadow_col)
+	# Pressed state (shadow drops on press; always 0 for pressed state)
+	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, border_w, border_c, 0, shadow_off, shadow_col)
 	add_theme_stylebox_override("pressed", _cached_style_pressed)
 	
 	# Disabled state
@@ -332,7 +357,7 @@ func _update_theme():
 		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, sel_border_w, sel_border_c, shadow_size, shadow_off, shadow_col)
 		add_theme_stylebox_override("hover_pressed", _cached_style_hover_pressed)
 		# Override pressed with selected colors for toggle mode
-		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, sel_border_w, sel_border_c, pressed_shadow_size, shadow_off, shadow_col)
+		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, sel_border_w, sel_border_c, 0, shadow_off, shadow_col)
 		add_theme_stylebox_override("pressed", _cached_style_pressed)
 		
 		# Toggle selected stylebox overrides (for RTL/mirrored layouts)
@@ -341,21 +366,24 @@ func _update_theme():
 		add_theme_stylebox_override("pressed_mirrored", _cached_style_pressed)
 		add_theme_stylebox_override("hover_pressed_mirrored", _cached_style_hover_pressed)
 	
-	# Text colors
-	if button_type == Type.TOGGLE:
-		# Toggle buttons need different colors for normal vs pressed (checked)
-		add_theme_color_override("font_color", text)
-		add_theme_color_override("font_hover_color", text)
-		add_theme_color_override("font_pressed_color", sel_text)
-		add_theme_color_override("font_hover_pressed_color", sel_text)
-		add_theme_color_override("font_focus_color", text)
-		add_theme_color_override("font_disabled_color", disabled_text)
+	# Text colors - for toggles, compute the *visual target* color so text and icon
+	# flip immediately on press (before button_pressed changes on release).
+	# XOR: pressing an unselected button -> selected; pressing a selected button -> unselected.
+	var current_text: Color
+	if disabled:
+		current_text = disabled_text
+	elif button_type == Type.TOGGLE:
+		var target_selected: bool = button_pressed != _is_pressing
+		current_text = sel_text if target_selected else text
 	else:
-		add_theme_color_override("font_color", text)
-		add_theme_color_override("font_hover_color", text)
-		add_theme_color_override("font_pressed_color", text)
-		add_theme_color_override("font_focus_color", text)
-		add_theme_color_override("font_disabled_color", disabled_text)
+		current_text = text
+	
+	add_theme_color_override("font_color", current_text)
+	add_theme_color_override("font_hover_color", current_text)
+	add_theme_color_override("font_pressed_color", current_text)
+	add_theme_color_override("font_hover_pressed_color", current_text)
+	add_theme_color_override("font_focus_color", current_text)
+	add_theme_color_override("font_disabled_color", disabled_text)
 	
 	# Font size
 	add_theme_font_size_override("font_size", font_size)
@@ -365,6 +393,9 @@ func _update_theme():
 		alignment = HORIZONTAL_ALIGNMENT_LEFT
 	else:
 		alignment = HORIZONTAL_ALIGNMENT_CENTER
+	
+	# Sync icon color to match text color (pass cached colors to avoid recomputation)
+	_update_icon_color(colors, selected_colors)
 
 func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
@@ -374,10 +405,7 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	var has_icon = _icon_node and _icon_node.visible
 	
 	style.bg_color = bg
-	style.corner_radius_top_left = radius
-	style.corner_radius_top_right = radius
-	style.corner_radius_bottom_left = radius
-	style.corner_radius_bottom_right = radius
+	style.set_corner_radius_all(radius)
 	style.content_margin_top = 0
 	style.content_margin_bottom = 0
 	style.shadow_size = shadow_size
@@ -395,15 +423,9 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	
 	if border_w > 0:
 		style.border_color = border_c
-		style.border_width_left = border_w
-		style.border_width_top = border_w
-		style.border_width_right = border_w
-		style.border_width_bottom = border_w
+		style.set_border_width_all(border_w)
 	else:
-		style.border_width_left = 0
-		style.border_width_top = 0
-		style.border_width_right = 0
-		style.border_width_bottom = 0
+		style.set_border_width_all(0)
 
 func _get_radius() -> int:
 	var spec = SIZE_SPECS[button_size]
@@ -414,31 +436,30 @@ func _get_radius() -> int:
 func refresh_theme():
 	"""Refresh theme when dark mode changes. Called by parent."""
 	_update_theme()
-	if _icon_node and _icon_node.visible:
-		_update_icon_color()
 
-func _update_icon_color():
+func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {}):
 	if not _icon_node or not _icon_node.visible:
 		return
 	
-	var is_selected = button_type == Type.TOGGLE and button_pressed
-	var color: Color
+	# Use cached colors if provided (avoids redundant _get_variant_colors calls)
+	if colors.is_empty():
+		colors = _get_variant_colors(false)
+	if selected_colors.is_empty():
+		selected_colors = _get_variant_colors(true)
 	
-	match button_variant:
-		Variant.ELEVATED:
-			color = M3Theme.get_on_primary() if is_selected else M3Theme.get_primary()
-		Variant.FILLED:
-			color = M3Theme.get_on_primary() if is_selected else M3Theme.get_on_primary_container()
-		Variant.TONAL:
-			color = M3Theme.get_on_secondary() if is_selected else M3Theme.get_on_secondary_container()
-		Variant.OUTLINED:
-			color = M3Theme.get_inverse_on_surface() if is_selected else M3Theme.get_on_surface_variant()
-		Variant.TEXT:
-			color = M3Theme.get_on_primary_container() if is_selected else M3Theme.get_on_surface_variant()
+	var current_text: Color
+	if disabled:
+		current_text = colors.disabled_text
+	elif button_type == Type.TOGGLE:
+		var target_selected: bool = button_pressed != _is_pressing
+		current_text = selected_colors.text if target_selected else colors.text
+	else:
+		current_text = colors.text
 	
-	if _icon_node.icon_settings.icon_color != color:
-		_icon_node.icon_settings.icon_color = color
-		_icon_node._on_icon_settings_changed()
+	if _icon_node.icon_settings.icon_color != current_text:
+		_icon_node.icon_settings.icon_color = current_text
+		# FontIconSettings.icon_color setter emits changed signal;
+		# FontIcon auto-updates via that signal. No direct call needed.
 
 func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
@@ -457,6 +478,3 @@ func _update_icon_position():
 		pad_h,
 		size.y / 2.0 - icon_size_px / 2.0
 	)
-	
-	# Re-apply theme with spec icon size for correct text positioning
-	_update_theme()
