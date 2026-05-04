@@ -148,6 +148,9 @@ static func get_on_secondary_container() -> Color:
 static func get_surface_container_low() -> Color:
 	return get_elevation_surface(1)
 
+static func get_surface_container() -> Color:
+	return get_elevation_surface(2)
+
 static func get_error() -> Color:
 	return ERROR_DARK if is_dark_mode else ERROR_LIGHT
 

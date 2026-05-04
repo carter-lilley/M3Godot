@@ -40,87 +40,27 @@ func _ready():
 	
 	# Add toggle button test row
 	_add_toggle_button_row()
-	# Add icon button test rows
-	_add_icon_button_rows()
+	
+	# Configure NavigationRail
+	var nav_rail = $NavigationRail
+	var nav_destinations = [
+		_create_nav_dest("home", "Home"),
+		_create_nav_dest("star", "Favorites"),
+		_create_nav_dest("search", "Search"),
+		_create_nav_dest("", "Section A"),
+		_create_nav_dest("settings", "Settings"),
+		_create_nav_dest("info", "About"),
+	]
+	nav_rail.destinations = nav_destinations
 
 func _on_dark_mode_toggled(pressed: bool):
 	dark_mode = pressed
 
-func _add_icon_button_rows():
-	var vbox = $MarginContainer/ScrollContainer/VBoxContainer
-	
-	# Label
-	var label = Label.new()
-	label.text = "M3 Icon Buttons"
-	vbox.add_child(label)
-	
-	# Row 1: Sizes (Standard variant, circular)
-	var row1 = HBoxContainer.new()
-	row1.add_theme_constant_override("separation", 16)
-	vbox.add_child(row1)
-	
-	var sizes = [
-		{"name": "XS", "size": M3IconButton.IconSize.EXTRA_SMALL},
-		{"name": "S", "size": M3IconButton.IconSize.SMALL},
-		{"name": "M", "size": M3IconButton.IconSize.MEDIUM},
-		{"name": "L", "size": M3IconButton.IconSize.LARGE},
-		{"name": "XL", "size": M3IconButton.IconSize.EXTRA_LARGE},
-	]
-	
-	for s in sizes:
-		var btn = M3IconButton.new()
-		btn.icon_name = "play"
-		btn.icon_button_size = s.size
-		btn.icon_button_variant = M3IconButton.IconVariant.FILLED
-		row1.add_child(btn)
-	
-	# Row 2: Variants (Medium size, circular)
-	var row2 = HBoxContainer.new()
-	row2.add_theme_constant_override("separation", 16)
-	vbox.add_child(row2)
-	
-	var icon_variants = [
-		{"name": "Std", "variant": M3IconButton.IconVariant.STANDARD},
-		{"name": "Fld", "variant": M3IconButton.IconVariant.FILLED},
-		{"name": "Tnl", "variant": M3IconButton.IconVariant.TONAL},
-		{"name": "Out", "variant": M3IconButton.IconVariant.OUTLINED},
-	]
-	
-	for v in icon_variants:
-		var btn = M3IconButton.new()
-		btn.icon_name = "share"
-		btn.icon_button_variant = v.variant
-		row2.add_child(btn)
-	
-	# Row 3: Toggle icon buttons (selected)
-	var row3 = HBoxContainer.new()
-	row3.add_theme_constant_override("separation", 16)
-	vbox.add_child(row3)
-	
-	for v in icon_variants:
-		var btn = M3IconButton.new()
-		btn.icon_name = "check"
-		btn.icon_button_variant = v.variant
-		btn.button_type = M3Button.Type.TOGGLE
-		btn.button_pressed = true
-		row3.add_child(btn)
-	
-	# Row 4: Shapes (Medium, Filled)
-	var row4 = HBoxContainer.new()
-	row4.add_theme_constant_override("separation", 16)
-	vbox.add_child(row4)
-	
-	var btn_circ = M3IconButton.new()
-	btn_circ.icon_name = "menu"
-	btn_circ.icon_button_variant = M3IconButton.IconVariant.FILLED
-	btn_circ.icon_button_shape = M3IconButton.IconShape.CIRCULAR
-	row4.add_child(btn_circ)
-	
-	var btn_sq = M3IconButton.new()
-	btn_sq.icon_name = "menu"
-	btn_sq.icon_button_variant = M3IconButton.IconVariant.FILLED
-	btn_sq.icon_button_shape = M3IconButton.IconShape.ROUNDED_SQUARE
-	row4.add_child(btn_sq)
+func _create_nav_dest(icon: String, label: String) -> M3NavigationDestinationData:
+	var data = M3NavigationDestinationData.new()
+	data.icon_name = icon
+	data.label = label
+	return data
 
 func _add_toggle_button_row():
 	var vbox = $MarginContainer/ScrollContainer/VBoxContainer
@@ -204,7 +144,7 @@ func apply_theme():
 
 func _update_m3_components(node: Node):
 	for child in node.get_children():
-		if child is M3Slider or child is M3Button or child is M3IconButton:
+		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation:
 			child.refresh_theme()
 		if child.get_child_count() > 0:
 			_update_m3_components(child)

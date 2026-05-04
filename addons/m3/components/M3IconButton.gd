@@ -168,7 +168,10 @@ func _update_theme():
 	var radius = _get_radius()
 	var pad_h := 0  # No extra padding for icon buttons
 	
-	# Use parent's color logic but with icon-button-specific variant mapping
+	# Color logic:
+	# - Toggle: unselected=false, selected=true (always distinct)
+	# - Non-toggle: most variants use selected=true colors as default,
+	#   except STANDARD which is always icon-only
 	var colors: Dictionary
 	var selected_colors: Dictionary
 	
@@ -176,7 +179,14 @@ func _update_theme():
 		colors = _get_icon_variant_colors(false)
 		selected_colors = _get_icon_variant_colors(true)
 	else:
-		colors = _get_icon_variant_colors(false)
+		# Non-toggle: default state matches the "selected" colors for
+		# FILLED/Tonal (showing their container), and "unselected" for
+		# STANDARD/Outlined (no container or outline)
+		match icon_button_variant:
+			IconVariant.FILLED, IconVariant.TONAL:
+				colors = _get_icon_variant_colors(true)
+			_:
+				colors = _get_icon_variant_colors(false)
 		selected_colors = colors
 	
 	var bg: Color = colors.bg
@@ -260,40 +270,39 @@ func _get_icon_variant_colors(selected: bool) -> Dictionary:
 	
 	match icon_button_variant:
 		IconVariant.STANDARD:
-			# Standard toggle: unselected = just icon, selected = filled container
+			# Standard: always no container; only icon color changes
 			if selected:
-				result.bg = M3Theme.get_primary_container()
-				result.text = M3Theme.get_on_primary_container()
-				result.hover_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_HOVER)
-				result.pressed_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_PRESSED)
-			else:
 				result.bg = Color.TRANSPARENT
 				result.text = M3Theme.get_primary()
-				# Hover/press: primary at low opacity overlay on transparent
 				result.hover_bg = Color(M3Theme.get_primary().r, M3Theme.get_primary().g, M3Theme.get_primary().b, M3Theme.OPACITY_HOVER)
 				result.pressed_bg = Color(M3Theme.get_primary().r, M3Theme.get_primary().g, M3Theme.get_primary().b, M3Theme.OPACITY_PRESSED)
+			else:
+				result.bg = Color.TRANSPARENT
+				result.text = M3Theme.get_on_surface_variant()
+				result.hover_bg = Color(M3Theme.get_on_surface_variant().r, M3Theme.get_on_surface_variant().g, M3Theme.get_on_surface_variant().b, M3Theme.OPACITY_HOVER)
+				result.pressed_bg = Color(M3Theme.get_on_surface_variant().r, M3Theme.get_on_surface_variant().g, M3Theme.get_on_surface_variant().b, M3Theme.OPACITY_PRESSED)
 			result.disabled_bg = Color.TRANSPARENT
 			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
 			result.border_w = 0
 		IconVariant.FILLED:
-			# Filled toggle: unselected = container, selected = solid
+			# Filled: unselected = surface container, selected = primary
 			if selected:
 				result.bg = M3Theme.get_primary()
 				result.text = M3Theme.get_on_primary()
 			else:
-				result.bg = M3Theme.get_primary_container()
-				result.text = M3Theme.get_on_primary_container()
+				result.bg = M3Theme.get_surface_container()
+				result.text = M3Theme.get_on_surface_variant()
 			result.hover_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_HOVER)
 			result.pressed_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color(M3Theme.get_on_surface_variant().r, M3Theme.get_on_surface_variant().g, M3Theme.get_on_surface_variant().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_bg = M3Theme.disabled_color(M3Theme.get_on_surface_variant())
 			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
 			result.border_w = 0
 		IconVariant.TONAL:
-			# Tonal toggle: unselected = container, selected = solid
+			# Tonal: unselected = secondary container, selected = secondary
 			if selected:
 				result.bg = M3Theme.get_secondary()
 				result.text = M3Theme.get_on_secondary()
@@ -302,7 +311,7 @@ func _get_icon_variant_colors(selected: bool) -> Dictionary:
 				result.text = M3Theme.get_on_secondary_container()
 			result.hover_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_HOVER)
 			result.pressed_bg = M3Theme.state_overlay(result.bg, result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color(M3Theme.get_on_surface_variant().r, M3Theme.get_on_surface_variant().g, M3Theme.get_on_surface_variant().b, M3Theme.OPACITY_DISABLED)
+			result.disabled_bg = M3Theme.disabled_color(M3Theme.get_on_surface_variant())
 			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
 			result.border_c = Color.TRANSPARENT
