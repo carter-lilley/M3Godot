@@ -209,21 +209,17 @@ static func disabled_color(color: Color) -> Color:
 # STYLEBOX FACTORIES
 # ============================================
 
-static func make_flat(bg: Color, radius: int = RADIUS_NONE, 
+static func make_flat(bg: Color, radius: int = RADIUS_NONE,
 					  border_w: int = 0, border_c: Color = Color.TRANSPARENT,
 					  pad_h: int = -1, pad_v: int = -1) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
 	s.bg_color = bg
-	s.corner_radius_top_left = radius
-	s.corner_radius_top_right = radius
-	s.corner_radius_bottom_left = radius
-	s.corner_radius_bottom_right = radius
+	s.set_corner_radius_all(radius)
+	s.anti_aliasing = true
+	s.anti_aliasing_size = 1.0
 	if border_w > 0:
 		s.border_color = border_c
-		s.border_width_left = border_w
-		s.border_width_top = border_w
-		s.border_width_right = border_w
-		s.border_width_bottom = border_w
+		s.set_border_width_all(border_w)
 	if pad_h >= 0:
 		s.content_margin_left = pad_h
 		s.content_margin_right = pad_h
@@ -390,43 +386,36 @@ static func generate_theme() -> Theme:
 	# Track background (inactive)
 	var slider_track = StyleBoxFlat.new()
 	slider_track.bg_color = surf_var
-	slider_track.corner_radius_top_left = 2
-	slider_track.corner_radius_top_right = 2
-	slider_track.corner_radius_bottom_left = 2
-	slider_track.corner_radius_bottom_right = 2
+	slider_track.set_corner_radius_all(2)
 	slider_track.content_margin_top = 6
 	slider_track.content_margin_bottom = 6
 	
 	# Track active portion
 	var slider_active = StyleBoxFlat.new()
 	slider_active.bg_color = prim
-	slider_active.corner_radius_top_left = 2
-	slider_active.corner_radius_top_right = 2
-	slider_active.corner_radius_bottom_left = 2
-	slider_active.corner_radius_bottom_right = 2
+	slider_active.set_corner_radius_all(2)
 	slider_active.content_margin_top = 6
 	slider_active.content_margin_bottom = 6
 	
 	# Grabber (thumb)
 	var grabber = StyleBoxFlat.new()
 	grabber.bg_color = prim
-	grabber.corner_radius_top_left = 10
-	grabber.corner_radius_top_right = 10
-	grabber.corner_radius_bottom_left = 10
-	grabber.corner_radius_bottom_right = 10
+	grabber.set_corner_radius_all(10)
 	grabber.shadow_size = 2
 	grabber.shadow_offset = Vector2(0, 1)
 	grabber.shadow_color = Color(0, 0, 0, 0.2)
 	
 	var grabber_hi = StyleBoxFlat.new()
 	grabber_hi.bg_color = state_overlay(prim, Color.WHITE, 0.2)
-	grabber_hi.corner_radius_top_left = 10
-	grabber_hi.corner_radius_top_right = 10
-	grabber_hi.corner_radius_bottom_left = 10
-	grabber_hi.corner_radius_bottom_right = 10
+	grabber_hi.set_corner_radius_all(10)
 	grabber_hi.shadow_size = 4
 	grabber_hi.shadow_offset = Vector2(0, 2)
 	grabber_hi.shadow_color = Color(0, 0, 0, 0.3)
+	
+	# Enable anti-aliasing for slider elements
+	for sb in [slider_track, slider_active, grabber, grabber_hi]:
+		sb.anti_aliasing = true
+		sb.anti_aliasing_size = 1.0
 	
 	# HSlider
 	t.set_stylebox("slider", "HSlider", slider_track)
@@ -447,19 +436,17 @@ static func generate_theme() -> Theme:
 	# ========================================
 	var prog_bg = StyleBoxFlat.new()
 	prog_bg.bg_color = surf_var
-	prog_bg.corner_radius_top_left = 2
-	prog_bg.corner_radius_top_right = 2
-	prog_bg.corner_radius_bottom_left = 2
-	prog_bg.corner_radius_bottom_right = 2
+	prog_bg.set_corner_radius_all(2)
 	prog_bg.content_margin_top = 4
 	prog_bg.content_margin_bottom = 4
 	
 	var prog_fill = StyleBoxFlat.new()
 	prog_fill.bg_color = prim
-	prog_fill.corner_radius_top_left = 2
-	prog_fill.corner_radius_top_right = 2
-	prog_fill.corner_radius_bottom_left = 2
-	prog_fill.corner_radius_bottom_right = 2
+	prog_fill.set_corner_radius_all(2)
+	
+	for sb in [prog_bg, prog_fill]:
+		sb.anti_aliasing = true
+		sb.anti_aliasing_size = 1.0
 	
 	t.set_stylebox("background", "ProgressBar", prog_bg)
 	t.set_stylebox("fill", "ProgressBar", prog_fill)
@@ -527,17 +514,15 @@ static func generate_theme() -> Theme:
 	
 	var sb_grabber = StyleBoxFlat.new()
 	sb_grabber.bg_color = on_surf_var
-	sb_grabber.corner_radius_top_left = 4
-	sb_grabber.corner_radius_top_right = 4
-	sb_grabber.corner_radius_bottom_left = 4
-	sb_grabber.corner_radius_bottom_right = 4
+	sb_grabber.set_corner_radius_all(4)
 	
 	var sb_grabber_hi = StyleBoxFlat.new()
 	sb_grabber_hi.bg_color = on_surf
-	sb_grabber_hi.corner_radius_top_left = 4
-	sb_grabber_hi.corner_radius_top_right = 4
-	sb_grabber_hi.corner_radius_bottom_left = 4
-	sb_grabber_hi.corner_radius_bottom_right = 4
+	sb_grabber_hi.set_corner_radius_all(4)
+	
+	for sb in [sb_grabber, sb_grabber_hi]:
+		sb.anti_aliasing = true
+		sb.anti_aliasing_size = 1.0
 	
 	# VScrollBar
 	t.set_stylebox("scroll", "VScrollBar", sb_track)

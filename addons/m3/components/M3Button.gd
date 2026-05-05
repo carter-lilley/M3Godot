@@ -155,6 +155,9 @@ func _initialize_caches():
 	_cached_style_disabled = StyleBoxFlat.new()
 	_cached_style_focus = StyleBoxFlat.new()
 	_cached_style_hover_pressed = StyleBoxFlat.new()
+	for sb in [_cached_style_normal, _cached_style_hover, _cached_style_pressed, _cached_style_disabled, _cached_style_focus, _cached_style_hover_pressed]:
+		sb.anti_aliasing = true
+		sb.anti_aliasing_size = 1.0
 
 func _create_icon():
 	_icon_node = FontIcon.new()
@@ -166,10 +169,13 @@ func _create_icon():
 	_icon_node.icon_settings.shadow_color = Color.TRANSPARENT
 	add_child(_icon_node)
 
+func _get_size_spec() -> Dictionary:
+	return SIZE_SPECS[button_size]
+
 func _update_size():
 	if not _cached_style_normal:
 		return
-	var spec = SIZE_SPECS[button_size]
+	var spec = _get_size_spec()
 	var height_px = M3Units.dp(spec["height"])
 	var icon_size_px = M3Units.dp(spec["icon_size"])
 	custom_minimum_size = Vector2(custom_minimum_size.x, height_px)
@@ -183,7 +189,7 @@ func _update_icon():
 	if not _icon_node:
 		return
 	
-	var spec = SIZE_SPECS[button_size]
+	var spec = _get_size_spec()
 	var was_visible = _icon_node.visible
 	if icon_name:
 		_icon_node.visible = true
@@ -290,7 +296,7 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 func _update_theme():
 	if not _cached_style_normal:
 		return
-	var spec = SIZE_SPECS[button_size]
+	var spec = _get_size_spec()
 	var radius = _get_radius()
 	var pad_h = M3Units.dp(spec["padding_h"])
 	var font_size = M3Units.dp(spec["font_size"])
@@ -389,10 +395,7 @@ func _update_theme():
 	add_theme_font_size_override("font_size", font_size)
 	
 	# Text alignment
-	if _icon_node and _icon_node.visible:
-		alignment = HORIZONTAL_ALIGNMENT_LEFT
-	else:
-		alignment = HORIZONTAL_ALIGNMENT_CENTER
+	alignment = _get_text_alignment()
 	
 	# Sync icon color to match text color (pass cached colors to avoid recomputation)
 	_update_icon_color(colors, selected_colors)
@@ -400,7 +403,7 @@ func _update_theme():
 func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
 		return
-	var spec = SIZE_SPECS[button_size]
+	var spec = _get_size_spec()
 	var icon_gap = M3Units.dp(spec["icon_gap"])
 	var has_icon = _icon_node and _icon_node.visible
 	
@@ -428,10 +431,16 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 		style.set_border_width_all(0)
 
 func _get_radius() -> int:
-	var spec = SIZE_SPECS[button_size]
+	var spec = _get_size_spec()
 	if button_shape == Shape.PILL:
 		return int(M3Units.dp(spec["height"]) / 2.0)
 	return M3Units.dp(spec["radius"])
+
+func _get_text_alignment() -> HorizontalAlignment:
+	if _icon_node and _icon_node.visible:
+		return HORIZONTAL_ALIGNMENT_LEFT
+	else:
+		return HORIZONTAL_ALIGNMENT_CENTER
 
 func refresh_theme():
 	"""Refresh theme when dark mode changes. Called by parent."""
@@ -469,7 +478,7 @@ func _update_icon_position():
 	if not _icon_node or not _icon_node.visible:
 		return
 	
-	var spec = SIZE_SPECS[button_size]
+	var spec = _get_size_spec()
 	var pad_h = M3Units.dp(spec["padding_h"])
 	var icon_size_px = M3Units.dp(spec["icon_size"])
 	

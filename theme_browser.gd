@@ -52,6 +52,16 @@ func _ready():
 		_create_nav_dest("info", "About"),
 	]
 	nav_rail.destinations = nav_destinations
+	
+	# Configure NavigationBar
+	var nav_bar = $NavigationBar
+	var bar_destinations = [
+		_create_nav_dest("home", "Home"),
+		_create_nav_dest("star", "Favorites"),
+		_create_nav_dest("search", "Search"),
+		_create_nav_dest("settings", "Settings"),
+	]
+	nav_bar.destinations = bar_destinations
 
 func _on_dark_mode_toggled(pressed: bool):
 	dark_mode = pressed

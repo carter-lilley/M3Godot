@@ -7,9 +7,18 @@ extends PanelContainer
 
 signal destination_selected(index: int, reselected: bool)
 
+enum LabelVisibility { AUTO, SELECTED, LABELED, UNLABELED }
+
 # ============================================
 # EXPORTS
 # ============================================
+
+@export var label_visibility: LabelVisibility = LabelVisibility.AUTO:
+	set(value):
+		if value == label_visibility:
+			return
+		label_visibility = value
+		_update_label_visibility()
 
 @export var destinations: Array = []:
 	set(value):
@@ -42,6 +51,8 @@ func _ready():
 func _initialize_background():
 	_cached_background = StyleBoxFlat.new()
 	_cached_background.bg_color = M3Theme.get_surface_container()
+	_cached_background.anti_aliasing = true
+	_cached_background.anti_aliasing_size = 1.0
 	add_theme_stylebox_override("panel", _cached_background)
 
 # ============================================
@@ -52,11 +63,31 @@ func _rebuild_destinations():
 	# Override in subclasses
 	pass
 
+func _get_effective_label_visibility() -> LabelVisibility:
+	match label_visibility:
+		LabelVisibility.AUTO:
+			var count = _destination_items.size()
+			if count <= 3:
+				return LabelVisibility.LABELED
+			else:
+				return LabelVisibility.SELECTED
+		_:
+			return label_visibility
+
+func _update_label_visibility():
+	var effective = _get_effective_label_visibility()
+	for item in _destination_items:
+		item.label_visibility = effective
+
 func _update_selection(old_index: int):
 	# Update visual state of items
 	for i in range(_destination_items.size()):
 		var item = _destination_items[i]
 		item.active = (i == selected_index)
+	
+	# Update label visibility for SELECTED mode
+	if _get_effective_label_visibility() == LabelVisibility.SELECTED:
+		_update_label_visibility()
 	
 	# Emit signal
 	if selected_index >= 0 and selected_index < destinations.size():

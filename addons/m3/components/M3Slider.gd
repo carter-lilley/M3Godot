@@ -281,6 +281,9 @@ func _initialize_caches():
 	_cached_style_rect = StyleBoxFlat.new()
 	_cached_style_circle = StyleBoxFlat.new()
 	_cached_style_focus = StyleBoxFlat.new()
+	for sb in [_cached_style_rect, _cached_style_circle, _cached_style_focus]:
+		sb.anti_aliasing = true
+		sb.anti_aliasing_size = 1.0
 	
 	# Cache font reference (avoid reloading on every theme refresh)
 	_cached_font = M3Theme.load_fonts()["bold"]

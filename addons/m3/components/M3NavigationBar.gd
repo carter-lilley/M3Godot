@@ -39,6 +39,13 @@ func _create_layout():
 	_content_container.add_theme_constant_override("separation", 0)
 	add_child(_content_container)
 
+func _update_selection(old_index: int):
+	super._update_selection(old_index)
+	# Update labels for SELECTED mode
+	if _get_effective_label_visibility() == LabelVisibility.SELECTED:
+		for item in _destination_items:
+			item._update_label()
+
 # ============================================
 # DESTINATION MANAGEMENT (override)
 # ============================================
@@ -71,6 +78,7 @@ func _rebuild_destinations():
 		item.destination_layout = M3NavigationDestination.LayoutMode.VERTICAL
 		item.active = (i == selected_index)
 		item.disabled = data.disabled
+		item.label_visibility = _get_effective_label_visibility()
 		item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		
 		# Connect signal
@@ -83,6 +91,7 @@ func _rebuild_destinations():
 func _update_destinations_layout():
 	for item in _destination_items:
 		item.destination_layout = M3NavigationDestination.LayoutMode.VERTICAL
+		item.label_visibility = _get_effective_label_visibility()
 
 # ============================================
 # THEME
