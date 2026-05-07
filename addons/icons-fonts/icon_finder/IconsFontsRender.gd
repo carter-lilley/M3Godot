@@ -35,13 +35,25 @@ func _ready() -> void:
 func _on_visibility_changed():
 	if visible:
 		set_icons_size(IconsFonts.preview_size)
-		update_table(search_line_edit.text)
+		# Retry if data not loaded yet
+		var data := get_font_data()
+		if data.is_empty():
+			call_deferred("update_table", search_line_edit.text)
+		else:
+			update_table(search_line_edit.text)
 
 func setup():
 	set_meta_underline(false)
 	set_icons_size(IconsFonts.preview_size)
 
 func update_table(filter := ""):
+	var data := get_font_data()
+	
+	# If data isn't loaded yet, retry on next frame
+	if data.is_empty():
+		call_deferred("update_table", filter)
+		return
+	
 	var table = "[table={columns}, {inline_align}]"
 	var columns := int(size.x / IconsFonts.preview_size) + 1
 	if columns <= 10:
@@ -54,9 +66,6 @@ func update_table(filter := ""):
 		"columns": columns,
 		"inline_align": INLINE_ALIGNMENT_CENTER
 	})
-
-	var data := get_font_data()
-	if !data: return
 
 	var cells := columns
 	for key: String in data:

@@ -94,7 +94,7 @@ func _update_size():
 		return
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	var size_px = M3Units.dp(spec["size"])
-	var icon_size_px = M3Units.dp(spec["icon_size"])
+	var icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
 	
 	# Force square dimensions
 	custom_minimum_size = Vector2(size_px, size_px)
@@ -111,9 +111,10 @@ func _update_icon():
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	var was_visible = _icon_node.visible
 	if icon_name:
-		_icon_node.visible = true
+		var icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
+		_icon_node.icon_settings.icon_size = icon_size_px
 		_icon_node.icon_settings.icon_name = icon_name
-		_icon_node.icon_settings.icon_size = M3Units.dp(spec["icon_size"])
+		_icon_node.visible = true
 	else:
 		_icon_node.visible = false
 	
@@ -254,6 +255,10 @@ func _update_theme():
 	add_theme_color_override("font_hover_pressed_color", current_text)
 	add_theme_color_override("font_focus_color", current_text)
 	add_theme_color_override("font_disabled_color", disabled_text)
+	
+	# Set a minimum font size to prevent text server errors
+	# (text is empty anyway, but internal Label needs valid size)
+	add_theme_font_size_override("font_size", 1)
 	
 	# Hide text, center alignment
 	alignment = HORIZONTAL_ALIGNMENT_CENTER

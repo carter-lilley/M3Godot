@@ -57,7 +57,6 @@ const NAV_SIZE_SPECS = {
 		_update_size()
 		_update_theme()
 		_update_layout()
-		queue_redraw()
 
 @export var label_visibility: M3Navigation.LabelVisibility = M3Navigation.LabelVisibility.LABELED:
 	set(value):
@@ -66,7 +65,6 @@ const NAV_SIZE_SPECS = {
 		label_visibility = value
 		_update_label()
 		_update_layout()
-		queue_redraw()
 
 @export var active: bool = false:
 	set(value):
@@ -74,9 +72,9 @@ const NAV_SIZE_SPECS = {
 			return
 		active = value
 		button_pressed = active
+		_invalidate_color_cache()
 		_update_theme()
 		_update_label()
-		queue_redraw()
 
 # ============================================
 # INTERNAL
@@ -85,6 +83,7 @@ const NAV_SIZE_SPECS = {
 var _label_node: Label
 var _hovered: bool = false
 var _draw_sb: StyleBoxFlat
+var _cached_variant_colors: Dictionary = {}
 
 # ============================================
 # LIFECYCLE
@@ -111,6 +110,9 @@ func _ready():
 	# Track hover state via notifications (more reliable than signals)
 	focus_entered.connect(queue_redraw)
 	focus_exited.connect(queue_redraw)
+	
+	# Clear native focus stylebox so focus ring is drawn only around the pill
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 # ============================================
 # OVERRIDES
@@ -119,7 +121,17 @@ func _ready():
 func _get_size_spec() -> Dictionary:
 	return NAV_SIZE_SPECS[destination_layout]
 
+func _update_theme():
+	super._update_theme()
+	# Clear native focus stylebox after parent sets it
+	# so focus ring is drawn only around the pill in _draw()
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
 func _get_variant_colors(selected: bool) -> Dictionary:
+	var cache_key = str(selected) + "_" + str(disabled)
+	if _cached_variant_colors.has(cache_key):
+		return _cached_variant_colors[cache_key]
+	
 	var result = {}
 	
 	# Transparent background - pills drawn in _draw()
@@ -142,7 +154,11 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 		result.disabled_text = M3Theme.disabled_color(result.text)
 		result.focus_border = result.text
 	
+	_cached_variant_colors[cache_key] = result
 	return result
+
+func _invalidate_color_cache():
+	_cached_variant_colors.clear()
 
 func _update_icon_position():
 	if not _icon_node or not _icon_node.visible:
@@ -181,23 +197,11 @@ func _get_text_alignment() -> HorizontalAlignment:
 	return HORIZONTAL_ALIGNMENT_LEFT
 
 # ============================================
-# THEME OVERRIDE
-# ============================================
-
-func _update_theme():
-	super._update_theme()
-	# Clear native focus stylebox so focus ring is drawn only around the pill
-	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-
-# ============================================
 # DRAW
 # ============================================
 
 func _draw():
-	if destination_layout == LayoutMode.VERTICAL:
-		_draw_vertical_pill()
-	else:
-		_draw_horizontal_pill()
+	_draw_pill()
 
 func _has_visible_label() -> bool:
 	return _label_node != null and _label_node.visible and not destination_label.is_empty()
@@ -256,30 +260,12 @@ func _get_pill_radius() -> float:
 		# Circular (48×48 with 24dp radius)
 		return M3Units.dp(24)
 
-func _draw_vertical_pill():
+func _draw_pill():
 	var rect = _get_pill_rect()
 	var radius = _get_pill_radius()
 	var has_focus_state = has_focus()
-	var focus_color = _get_variant_colors(active).focus_border
-	
-	# Draw focus ring (2dp border around pill)
-	if has_focus_state:
-		var focus_rect = rect.grow(M3Units.dp(2))
-		_draw_rounded_rect(focus_rect, focus_color, radius)
-	
-	# Draw active pill
-	if active:
-		_draw_rounded_rect(rect, M3Theme.get_secondary_container(), radius)
-	# Draw hover pill (only if not active)
-	elif _hovered or has_focus_state:
-		var hover_color = M3Theme.get_surface_container().darkened(0.1)
-		_draw_rounded_rect(rect, hover_color, radius)
-
-func _draw_horizontal_pill():
-	var rect = _get_pill_rect()
-	var radius = _get_pill_radius()
-	var has_focus_state = has_focus()
-	var focus_color = _get_variant_colors(active).focus_border
+	var colors = _get_variant_colors(active)
+	var focus_color = colors.focus_border
 	
 	# Draw focus ring (2dp border around pill)
 	if has_focus_state:
@@ -373,17 +359,21 @@ func _update_label_position():
 	# Update alignment based on current layout
 	_label_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if destination_layout == LayoutMode.HORIZONTAL else HORIZONTAL_ALIGNMENT_CENTER
 	
+	# Guard against zero width during initialization
+	var node_width = max(size.x, 1.0)
+	
 	if destination_layout == LayoutMode.VERTICAL:
 		# Label below icon with 8dp gap, centered
 		_label_node.position = Vector2(0, _icon_node.position.y + icon_size_px + M3Units.dp(8))
-		_label_node.size = Vector2(size.x, M3Units.dp(16))
+		_label_node.size = Vector2(node_width, M3Units.dp(16))
 	else:
 		# Label to right of icon
 		_label_node.position = Vector2(
 			_icon_node.position.x + icon_size_px + M3Units.dp(12),
 			0
 		)
-		_label_node.size = Vector2(size.x - _label_node.position.x - M3Units.dp(16), size.y)
+		var label_width = max(node_width - _label_node.position.x - M3Units.dp(16), 1.0)
+		_label_node.size = Vector2(label_width, size.y)
 
 # ============================================
 # NOTIFICATIONS
@@ -407,5 +397,6 @@ func _notification(what: int):
 # ============================================
 
 func refresh_theme():
+	_invalidate_color_cache()
 	super.refresh_theme()
 	queue_redraw()

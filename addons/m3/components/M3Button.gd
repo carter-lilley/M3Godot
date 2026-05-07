@@ -105,12 +105,29 @@ const SIZE_SPECS = {
 		_update_icon()
 		# _update_theme() is called by _update_icon() if visibility changes
 
+@export var m3_tooltip_text: String = "":
+	set(value):
+		if value == m3_tooltip_text:
+			return
+		m3_tooltip_text = value
+		if _tooltip:
+			_tooltip.m3_tooltip_text = value
+
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
+	set(value):
+		if value == m3_tooltip_variant:
+			return
+		m3_tooltip_variant = value
+		if _tooltip:
+			_tooltip.m3_tooltip_variant = value
+
 # ============================================
 # INTERNAL
 # ============================================
 
 var _icon_node: FontIcon
 var _is_pressing: bool = false
+var _tooltip: M3Tooltip
 
 # Cached StyleBoxFlat instances (allocated once, mutated per state)
 var _cached_style_normal: StyleBoxFlat
@@ -137,15 +154,28 @@ func _ready():
 	toggled.connect(_on_toggled)
 	button_down.connect(_on_button_down)
 	button_up.connect(_on_button_up)
+	
+	# Setup tooltip
+	_setup_tooltip()
+
+func _setup_tooltip():
+	if m3_tooltip_text.is_empty():
+		return
+	_tooltip = M3Tooltip.new()
+	_tooltip.m3_tooltip_text = m3_tooltip_text
+	_tooltip.m3_tooltip_variant = m3_tooltip_variant
+	add_child(_tooltip)
+	mouse_entered.connect(_tooltip.show_for.bind(self))
+	mouse_exited.connect(_tooltip.hide_tooltip)
 
 func _on_button_down():
 	_is_pressing = true
-	_update_theme()
+	_update_colors()
 	queue_redraw()
 
 func _on_button_up():
 	_is_pressing = false
-	_update_theme()
+	_update_colors()
 	queue_redraw()
 
 func _initialize_caches():
@@ -164,7 +194,10 @@ func _create_icon():
 	_icon_node.visible = false
 	_icon_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_icon_node.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# Prevent 0-size font caching errors by setting minimum font size before any rendering
+	_icon_node.add_theme_font_size_override("font_size", 1)
 	_icon_node.icon_settings = FontIconSettings.new()
+	_icon_node.icon_settings.icon_size = 1.0
 	_icon_node.icon_settings.outline_color = Color.TRANSPARENT
 	_icon_node.icon_settings.shadow_color = Color.TRANSPARENT
 	add_child(_icon_node)
@@ -177,7 +210,7 @@ func _update_size():
 		return
 	var spec = _get_size_spec()
 	var height_px = M3Units.dp(spec["height"])
-	var icon_size_px = M3Units.dp(spec["icon_size"])
+	var icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
 	custom_minimum_size = Vector2(custom_minimum_size.x, height_px)
 	if _icon_node:
 		_icon_node.icon_settings.icon_size = icon_size_px
@@ -192,9 +225,9 @@ func _update_icon():
 	var spec = _get_size_spec()
 	var was_visible = _icon_node.visible
 	if icon_name:
-		_icon_node.visible = true
+		_icon_node.icon_settings.icon_size = max(1.0, M3Units.dp(spec["icon_size"]))
 		_icon_node.icon_settings.icon_name = icon_name
-		_icon_node.icon_settings.icon_size = M3Units.dp(spec["icon_size"])
+		_icon_node.visible = true
 	else:
 		_icon_node.visible = false
 	
@@ -441,6 +474,34 @@ func _get_text_alignment() -> HorizontalAlignment:
 		return HORIZONTAL_ALIGNMENT_LEFT
 	else:
 		return HORIZONTAL_ALIGNMENT_CENTER
+
+func _update_colors():
+	"""Update only color overrides without rebuilding styleboxes.
+	Called on press/release for performance."""
+	var colors = _get_variant_colors(false)
+	var selected_colors = _get_variant_colors(true)
+	
+	var current_text: Color
+	var disabled_text: Color
+	if disabled:
+		current_text = colors.disabled_text
+		disabled_text = colors.disabled_text
+	elif button_type == Type.TOGGLE:
+		var target_selected = button_pressed != _is_pressing
+		current_text = selected_colors.text if target_selected else colors.text
+		disabled_text = selected_colors.disabled_text
+	else:
+		current_text = colors.text
+		disabled_text = colors.disabled_text
+	
+	add_theme_color_override("font_color", current_text)
+	add_theme_color_override("font_hover_color", current_text)
+	add_theme_color_override("font_pressed_color", current_text)
+	add_theme_color_override("font_hover_pressed_color", current_text)
+	add_theme_color_override("font_focus_color", current_text)
+	add_theme_color_override("font_disabled_color", disabled_text)
+	
+	_update_icon_color(colors, selected_colors)
 
 func refresh_theme():
 	"""Refresh theme when dark mode changes. Called by parent."""

@@ -20,21 +20,14 @@ const ITEM_HEIGHT_EXPANDED := 56
 # EXPORTS
 # ============================================
 
+signal width_changed(width: float)
+
 @export var menu_gravity: MenuGravity = MenuGravity.TOP:
 	set(value):
 		if value == menu_gravity:
 			return
 		menu_gravity = value
 		_update_menu_gravity()
-
-@export var expanded: bool = false:
-	set(value):
-		if value == expanded:
-			return
-		expanded = value
-		_update_dimensions()
-		_update_destinations_layout()
-		queue_redraw()
 
 @export var header_content: Node = null:
 	set(value):
@@ -61,7 +54,9 @@ var _top_spacer: Control
 var _top_flex_spacer: Control
 var _bottom_flex_spacer: Control
 var _header_nodes: Array[Node] = []
+var _header_labels: Array[Label] = []
 var _sectioned_items: Array[M3NavigationDestination] = []
+var _cached_items_height: float = 0.0
 
 # ============================================
 # LIFECYCLE
@@ -115,21 +110,42 @@ func _update_dimensions():
 	var width_px = M3Units.dp(WIDTH_EXPANDED) if expanded else M3Units.dp(WIDTH_COLLAPSED)
 	custom_minimum_size = Vector2(width_px, 0)
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	width_changed.emit(width_px)
 	
 	# Position menu button via MarginContainer margins
 	var btn_size = M3Units.dp(48)
+	var margin_left = M3Units.dp(24)
 	if expanded:
 		# Left-aligned at 24dp (slightly inset, but not as far as destinations)
-		_menu_wrapper.add_theme_constant_override("margin_left", M3Units.dp(24))
-		_menu_wrapper.add_theme_constant_override("margin_right", width_px - M3Units.dp(24) - btn_size)
+		_menu_wrapper.add_theme_constant_override("margin_left", margin_left)
+		_menu_wrapper.add_theme_constant_override("margin_right", width_px - margin_left - btn_size)
 	else:
 		# Centered
 		var side_margin = (width_px - btn_size) / 2.0
 		_menu_wrapper.add_theme_constant_override("margin_left", side_margin)
 		_menu_wrapper.add_theme_constant_override("margin_right", side_margin)
+	
+	# Update content position in integrated mode
+	_update_content_position()
 
-func _on_menu_button_pressed():
-	expanded = not expanded
+func _apply_content_margins():
+	if not content_node:
+		return
+	var width_px = M3Units.dp(WIDTH_EXPANDED) if expanded else M3Units.dp(WIDTH_COLLAPSED)
+	# INTEGRATED mode: push content right by rail width (flush)
+	if content_node.has_method("add_theme_constant_override"):
+		content_node.add_theme_constant_override("margin_left", int(width_px))
+	else:
+		content_node.offset_left = width_px
+
+func _can_update_structure() -> bool:
+	"""Rail-specific: check if header vs item structure changed."""
+	for i in range(destinations.size()):
+		var old_is_header = _cached_destinations[i].icon_name.is_empty() and not _cached_destinations[i].label.is_empty()
+		var new_is_header = destinations[i].icon_name.is_empty() and not destinations[i].label.is_empty()
+		if old_is_header != new_is_header:
+			return false
+	return true
 
 func _update_menu_gravity():
 	if not _top_flex_spacer or not _bottom_flex_spacer:
@@ -150,7 +166,10 @@ func _update_menu_gravity():
 			# Menu area = top spacer (12dp) + menu button height (48dp for MEDIUM)
 			var menu_btn_height = _menu_button.custom_minimum_size.y if _menu_button else M3Units.dp(48)
 			var menu_area_height = _top_spacer.custom_minimum_size.y + menu_btn_height
-			var items_height = _calculate_items_height()
+			# Use cached height if valid
+			var items_height = _cached_items_height
+			if items_height <= 0:
+				items_height = _calculate_items_height()
 			# Center items within the ENTIRE rail, not just the space below the menu
 			# items_center = menu_area + top_padding + items_height/2 = rail_height/2
 			# top_padding = (rail_height - items_height)/2 - menu_area_height
@@ -170,6 +189,7 @@ func _calculate_items_height() -> float:
 			continue
 		if child.visible:
 			total += child.custom_minimum_size.y if child.custom_minimum_size.y > 0 else child.size.y
+	_cached_items_height = total
 	return total
 
 func _notification(what: int) -> void:
@@ -185,24 +205,27 @@ func _rebuild_destinations():
 	if not _content_container:
 		return
 	
-	# Clear destination items
+	# Check if we can do a lightweight update instead of full rebuild
+	if _can_update_in_place():
+		_update_destinations_in_place()
+		return
+	
+	# Full rebuild - clear everything
 	for item in _destination_items:
 		if item.get_parent():
 			item.get_parent().remove_child(item)
 		item.queue_free()
 	_destination_items.clear()
 	
-	# Clear header nodes
 	for node in _header_nodes:
 		if node.get_parent():
 			node.get_parent().remove_child(node)
 		node.queue_free()
 	_header_nodes.clear()
+	_header_labels.clear()
 	
-	# Clear sectioned items list
 	_sectioned_items.clear()
 	
-	# Remove all children from items area
 	for child in _items_area.get_children():
 		_items_area.remove_child(child)
 		child.queue_free()
@@ -218,25 +241,21 @@ func _rebuild_destinations():
 	for i in range(destinations.size()):
 		var data = destinations[i]
 		
-		# Check if this is a section header
 		if data.icon_name.is_empty() and not data.label.is_empty():
 			in_section = true
 			
-			# Add spacing before header
 			var spacer = Control.new()
 			spacer.custom_minimum_size = Vector2(0, M3Units.dp(12))
 			spacer.visible = expanded
 			_items_area.add_child(spacer)
 			_header_nodes.append(spacer)
 			
-			# Create header label
 			var header = Label.new()
 			header.text = data.label
 			header.add_theme_font_size_override("font_size", M3Units.dp(12))
 			header.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
 			header.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 			
-			# Padding for header - aligned with icons at 36dp
 			var header_container = MarginContainer.new()
 			header_container.add_theme_constant_override("margin_left", M3Units.dp(36))
 			header_container.add_theme_constant_override("margin_right", M3Units.dp(16))
@@ -246,9 +265,9 @@ func _rebuild_destinations():
 			header_container.visible = expanded
 			_items_area.add_child(header_container)
 			_header_nodes.append(header_container)
+			_header_labels.append(header)
 			continue
 		
-		# Create destination item
 		var item = M3NavigationDestination.new()
 		item.destination_icon = data.icon_name
 		item.destination_label = data.label
@@ -256,7 +275,6 @@ func _rebuild_destinations():
 		item.active = (item_idx == selected_index)
 		item.disabled = data.disabled
 		item.label_visibility = _get_effective_label_visibility()
-		# Size: collapsed fills width, expanded shrinks to content width
 		var height_px = M3Units.dp(ITEM_HEIGHT_EXPANDED) if expanded else M3Units.dp(ITEM_HEIGHT_COLLAPSED)
 		item.custom_minimum_size.y = height_px
 		if expanded:
@@ -265,12 +283,10 @@ func _rebuild_destinations():
 			item.custom_minimum_size.x = M3Units.dp(WIDTH_COLLAPSED)
 			item.size_flags_horizontal = Control.SIZE_FILL
 		
-		# If under a section, mark as sectioned and hide in collapsed mode
 		if in_section:
 			_sectioned_items.append(item)
 			item.visible = expanded
 		
-		# Connect signal - use item_idx which accounts for skipped headers
 		var idx = item_idx
 		item.pressed.connect(func(): _on_destination_pressed(idx))
 		
@@ -278,15 +294,67 @@ func _rebuild_destinations():
 		_items_area.add_child(item)
 		item_idx += 1
 	
-	# Add bottom flex spacer after all items
 	_bottom_flex_spacer = Control.new()
 	_bottom_flex_spacer.name = "BottomFlexSpacer"
 	_items_area.add_child(_bottom_flex_spacer)
 	
-	# Ensure header content is at the end of content container if present
 	if header_content and header_content.get_parent() == _content_container:
 		_content_container.move_child(header_content, -1)
 	
+	_cached_destinations = destinations.duplicate()
+	_cached_items_height = 0.0
+	_update_menu_gravity()
+
+func _update_destinations_in_place():
+	"""Update existing items without destroying them."""
+	var item_idx = 0
+	var in_section = false
+	var header_idx = 0
+	var label_idx = 0
+	
+	for i in range(destinations.size()):
+		var data = destinations[i]
+		var old_data = _cached_destinations[i]
+		
+		if data.icon_name.is_empty() and not data.label.is_empty():
+			in_section = true
+			# Update header visibility
+			if header_idx < _header_nodes.size():
+				_header_nodes[header_idx].visible = expanded
+				header_idx += 1
+			if header_idx < _header_nodes.size():
+				_header_nodes[header_idx].visible = expanded
+				header_idx += 1
+			if label_idx < _header_labels.size():
+				_header_labels[label_idx].text = data.label
+				label_idx += 1
+			continue
+		
+		if item_idx < _destination_items.size():
+			var item = _destination_items[item_idx]
+			
+			# Only update properties that changed
+			if item.destination_icon != data.icon_name:
+				item.destination_icon = data.icon_name
+			if item.destination_label != data.label:
+				item.destination_label = data.label
+			if item.disabled != data.disabled:
+				item.disabled = data.disabled
+			
+			item.active = (item_idx == selected_index)
+			
+			if in_section:
+				item.visible = expanded
+				if not _sectioned_items.has(item):
+					_sectioned_items.append(item)
+			else:
+				item.visible = true
+				_sectioned_items.erase(item)
+		
+		item_idx += 1
+	
+	_cached_destinations = destinations.duplicate()
+	_cached_items_height = 0.0
 	_update_menu_gravity()
 
 func _update_destinations_layout():
@@ -310,6 +378,7 @@ func _update_destinations_layout():
 			item.custom_minimum_size.x = M3Units.dp(WIDTH_COLLAPSED)
 			item.size_flags_horizontal = Control.SIZE_FILL
 	
+	_cached_items_height = 0.0
 	_update_menu_gravity()
 
 # ============================================
@@ -321,8 +390,5 @@ func refresh_theme():
 	if _menu_button:
 		_menu_button.refresh_theme()
 	# Update header label colors
-	for child in _content_container.get_children():
-		if child is MarginContainer:
-			for label in child.get_children():
-				if label is Label:
-					label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
+	for label in _header_labels:
+		label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())

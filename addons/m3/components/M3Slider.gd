@@ -23,6 +23,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 
 @export var slider_variant: Variant = Variant.STANDARD:
 	set(value):
+		if value == slider_variant:
+			return
 		slider_variant = value
 		_update_theme()
 		var is_range = slider_variant == Variant.RANGE
@@ -33,6 +35,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 
 @export var orientation: SliderOrientation = SliderOrientation.HORIZONTAL:
 	set(value):
+		if value == orientation:
+			return
 		orientation = value
 		# Recreate slider with correct type (HSlider vs VSlider)
 		if _slider:
@@ -45,6 +49,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 
 @export var slider_size: Size = Size.MEDIUM:
 	set(value):
+		if value == slider_size:
+			return
 		slider_size = value
 		_update_size()
 		_update_theme()
@@ -53,6 +59,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 
 @export var label_behavior: LabelBehavior = LabelBehavior.WHILE_DRAGGING:
 	set(value):
+		if value == label_behavior:
+			return
 		label_behavior = value
 		_update_bubble()
 
@@ -60,22 +68,30 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 
 @export var show_stops: bool = true:
 	set(value):
+		if value == show_stops:
+			return
 		show_stops = value
 		_request_redraw()
 		_invalidate_stop_cache()
 
 @export var start_icon_name: String = "":
 	set(value):
+		if value == start_icon_name:
+			return
 		start_icon_name = value
 		_update_icons()
 
 @export var end_icon_name: String = "":
 	set(value):
+		if value == end_icon_name:
+			return
 		end_icon_name = value
 		_update_icons()
 
 @export var range_value: float = 0.0:
 	set(v):
+		if v == range_value:
+			return
 		# Prevent crossing: range_value can never exceed value in RANGE mode
 		var max_val = _effective_max
 		if slider_variant == Variant.RANGE:
@@ -87,6 +103,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 @export var editable: bool = true:
 	get: return _slider.editable if _slider else true
 	set(v):
+		if v == editable:
+			return
 		if _slider:
 			_slider.editable = v
 			_invalidate_color_cache()
@@ -96,6 +114,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 @export var min_value: float = 0.0:
 	get: return _slider.min_value if _slider else _effective_min
 	set(v):
+		if v == _effective_min:
+			return
 		_effective_min = v
 		if _slider:
 			_slider.min_value = v
@@ -105,6 +125,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 @export var max_value: float = 100.0:
 	get: return _slider.max_value if _slider else _effective_max
 	set(v):
+		if v == _effective_max:
+			return
 		_effective_max = v
 		if _slider:
 			_slider.max_value = v
@@ -114,6 +136,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 @export var step: float = 0.0:
 	get: return _slider.step if _slider else _effective_step
 	set(v):
+		if v == _effective_step:
+			return
 		_effective_step = v
 		if _slider:
 			_slider.step = v
@@ -123,12 +147,31 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 @export var value: float = 0.0:
 	get: return _slider.value if _slider else 0.0
 	set(v):
-		if _slider:
-			# Prevent crossing: value can never go below range_value in RANGE mode
-			if slider_variant == Variant.RANGE:
-				v = max(v, range_value)
-			_slider.value = v
-			_request_redraw()
+		if not _slider:
+			return
+		# Prevent crossing: value can never go below range_value in RANGE mode
+		if slider_variant == Variant.RANGE:
+			v = max(v, range_value)
+		if v == _slider.value:
+			return
+		_slider.value = v
+		_request_redraw()
+
+@export var m3_tooltip_text: String = "":
+	set(value):
+		if value == m3_tooltip_text:
+			return
+		m3_tooltip_text = value
+		if _tooltip:
+			_tooltip.m3_tooltip_text = value
+
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
+	set(value):
+		if value == m3_tooltip_variant:
+			return
+		m3_tooltip_variant = value
+		if _tooltip:
+			_tooltip.m3_tooltip_variant = value
 
 # ============================================
 # INTERNAL
@@ -146,6 +189,7 @@ var _is_dragging_range: bool = false
 var _is_dragging_primary: bool = false
 var _is_focused: bool = false
 var _prev_value: float = 0.0  # Value before current drag/click interaction
+var _tooltip: M3Tooltip
 
 var _effective_min: float = 0.0
 var _effective_max: float = 100.0
@@ -275,6 +319,17 @@ func _ready():
 	
 	_update_range_hitbox_position()
 	_request_redraw()
+	_setup_tooltip()
+
+func _setup_tooltip():
+	if m3_tooltip_text.is_empty():
+		return
+	_tooltip = M3Tooltip.new()
+	_tooltip.m3_tooltip_text = m3_tooltip_text
+	_tooltip.m3_tooltip_variant = m3_tooltip_variant
+	add_child(_tooltip)
+	mouse_entered.connect(_tooltip.show_for.bind(self))
+	mouse_exited.connect(_tooltip.hide_tooltip)
 
 func _initialize_caches():
 	# Pre-allocate StyleBoxFlat instances for reuse
@@ -363,11 +418,20 @@ func _create_slider():
 	else:
 		_slider = HSlider.new()
 	
+	# Restore cached values
+	_slider.min_value = _effective_min
+	_slider.max_value = _effective_max
+	_slider.step = _effective_step
+	_slider.value = value
+	
 	# Slider handles all native input including keyboard/controller
 	# It's visually hidden but must be focusable for input
 	_slider.modulate = Color.TRANSPARENT
 	_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_slider.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	
+	# Note: Signals are connected in _connect_signals() which is called from _ready()
+	# Do not connect here to avoid duplicates when _create_slider() is called from setters
 
 func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
@@ -522,6 +586,18 @@ func _update_theme():
 	pass
 
 func _connect_signals():
+	# Disconnect first to prevent duplicates if called multiple times
+	if _slider.value_changed.is_connected(_on_value_changed):
+		_slider.value_changed.disconnect(_on_value_changed)
+	if _slider.drag_started.is_connected(_on_drag_started):
+		_slider.drag_started.disconnect(_on_drag_started)
+	if _slider.drag_ended.is_connected(_on_drag_ended):
+		_slider.drag_ended.disconnect(_on_drag_ended)
+	if _slider.focus_entered.is_connected(_on_focus_changed.bind(true)):
+		_slider.focus_entered.disconnect(_on_focus_changed.bind(true))
+	if _slider.focus_exited.is_connected(_on_focus_changed.bind(false)):
+		_slider.focus_exited.disconnect(_on_focus_changed.bind(false))
+	
 	_slider.value_changed.connect(_on_value_changed)
 	_slider.drag_started.connect(_on_drag_started)
 	_slider.drag_ended.connect(_on_drag_ended)

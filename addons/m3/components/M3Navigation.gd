@@ -4,14 +4,35 @@ extends PanelContainer
 
 ## Abstract base class for Material 3 Navigation components.
 ## Subclasses: M3NavigationRail, M3NavigationBar
+## Handles shared logic: expanded state, destination diffing, content positioning.
 
 signal destination_selected(index: int, reselected: bool)
+signal on_expanded
+signal on_collapsed
 
 enum LabelVisibility { AUTO, SELECTED, LABELED, UNLABELED }
+enum PlacementMode { OVERLAY, INTEGRATED }
 
 # ============================================
 # EXPORTS
 # ============================================
+
+@export var placement_mode: PlacementMode = PlacementMode.OVERLAY
+@export var content_node: Control = null
+
+@export var expanded: bool = false:
+	set(value):
+		if value == expanded:
+			return
+		expanded = value
+		if expanded:
+			on_expanded.emit()
+		else:
+			on_collapsed.emit()
+		_update_dimensions()
+		_update_destinations_layout()
+		_update_content_position()
+		queue_redraw()
 
 @export var label_visibility: LabelVisibility = LabelVisibility.AUTO:
 	set(value):
@@ -22,6 +43,8 @@ enum LabelVisibility { AUTO, SELECTED, LABELED, UNLABELED }
 
 @export var destinations: Array = []:
 	set(value):
+		if value == destinations:
+			return
 		destinations = value
 		_rebuild_destinations()
 
@@ -38,6 +61,7 @@ enum LabelVisibility { AUTO, SELECTED, LABELED, UNLABELED }
 # ============================================
 
 var _destination_items: Array[M3NavigationDestination] = []
+var _cached_destinations: Array = []
 var _cached_background: StyleBoxFlat
 
 # ============================================
@@ -56,12 +80,44 @@ func _initialize_background():
 	add_theme_stylebox_override("panel", _cached_background)
 
 # ============================================
+# DIMENSIONS & CONTENT POSITIONING
+# ============================================
+
+func _update_dimensions():
+	"""Override in subclass to update component size/position."""
+	pass
+
+func _update_destinations_layout():
+	"""Override in subclass to update destination item layouts."""
+	pass
+
+func _update_content_position():
+	"""Adjust content_node margins when in INTEGRATED mode."""
+	if not content_node or placement_mode == PlacementMode.OVERLAY:
+		return
+	_apply_content_margins()
+
+func _apply_content_margins():
+	"""Override in subclass to set content_node margins."""
+	pass
+
+# ============================================
 # DESTINATION MANAGEMENT
 # ============================================
 
 func _rebuild_destinations():
-	# Override in subclasses
+	"""Override in subclass."""
 	pass
+
+func _can_update_in_place() -> bool:
+	"""Check if destinations changed in a way that allows in-place updates."""
+	if _cached_destinations.is_empty() or destinations.size() != _cached_destinations.size():
+		return false
+	return _can_update_structure()
+
+func _can_update_structure() -> bool:
+	"""Override in subclass if structure checks are needed (e.g., headers)."""
+	return true
 
 func _get_effective_label_visibility() -> LabelVisibility:
 	match label_visibility:
@@ -80,13 +136,15 @@ func _update_label_visibility():
 		item.label_visibility = effective
 
 func _update_selection(old_index: int):
+	var effective = _get_effective_label_visibility()
+	
 	# Update visual state of items
 	for i in range(_destination_items.size()):
 		var item = _destination_items[i]
 		item.active = (i == selected_index)
 	
 	# Update label visibility for SELECTED mode
-	if _get_effective_label_visibility() == LabelVisibility.SELECTED:
+	if effective == LabelVisibility.SELECTED:
 		_update_label_visibility()
 	
 	# Emit signal
@@ -100,6 +158,9 @@ func _on_destination_pressed(index: int):
 	if destinations[index].disabled:
 		return
 	selected_index = index
+
+func _on_menu_button_pressed():
+	expanded = not expanded
 
 # ============================================
 # THEME
@@ -120,6 +181,8 @@ func get_destination_count() -> int:
 
 func set_destination_enabled(index: int, enabled: bool):
 	if index >= 0 and index < destinations.size():
-		destinations[index].disabled = not enabled
-		if index < _destination_items.size():
-			_destination_items[index].disabled = not enabled
+		var new_disabled = not enabled
+		if destinations[index].disabled != new_disabled:
+			destinations[index].disabled = new_disabled
+			if index < _destination_items.size():
+				_destination_items[index].disabled = new_disabled

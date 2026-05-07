@@ -242,7 +242,11 @@ static func make_empty() -> StyleBoxEmpty:
 # FONTS
 # ============================================
 
+static var _cached_fonts: Dictionary = {}
+
 static func load_fonts() -> Dictionary:
+	if not _cached_fonts.is_empty():
+		return _cached_fonts
 	var d = {}
 	var dir = "res://fonts/Roboto/"
 	d["regular"] = load(dir + "Roboto-Regular.ttf")
@@ -250,6 +254,7 @@ static func load_fonts() -> Dictionary:
 	d["medium"] = load(dir + "Roboto-Medium.ttf")
 	d["bold"] = load(dir + "Roboto-Bold.ttf")
 	d["black"] = load(dir + "Roboto-Black.ttf")
+	_cached_fonts = d
 	return d
 
 # ============================================

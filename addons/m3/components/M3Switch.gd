@@ -1,0 +1,304 @@
+@tool
+class_name M3Switch
+extends CheckButton
+
+## Material 3 Switch
+## Custom-drawn toggle switch with optional thumb icon.
+## Extends CheckButton for native input/behavior.
+## Uses FontIcon node for thumb icons (icons-fonts addon).
+
+# ============================================
+# SIZE SPECS (all values in dp)
+# ============================================
+
+const TRACK_WIDTH := 52
+const TRACK_HEIGHT := 32
+const THUMB_OFF_SIZE := 16
+const THUMB_ON_SIZE := 24
+const THUMB_PRESSED_SIZE := 28
+const ICON_SIZE := 16
+const THUMB_PADDING := 4.0  # Minimum padding from track edge (dp)
+
+# ============================================
+# EXPORTS
+# ============================================
+
+@export var icon_name: String = "":
+	set(value):
+		if value == icon_name:
+			return
+		icon_name = value
+		_update_icon()
+		queue_redraw()
+
+@export var m3_tooltip_text: String = "":
+	set(value):
+		if value == m3_tooltip_text:
+			return
+		m3_tooltip_text = value
+		if _tooltip:
+			_tooltip.m3_tooltip_text = value
+
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
+	set(value):
+		if value == m3_tooltip_variant:
+			return
+		m3_tooltip_variant = value
+		if _tooltip:
+			_tooltip.m3_tooltip_variant = value
+
+# ============================================
+# INTERNAL
+# ============================================
+
+var _is_pressing: bool = false
+var _hovered: bool = false
+var _track_sb: StyleBoxFlat
+var _thumb_sb: StyleBoxFlat
+var _focus_sb: StyleBoxFlat
+var _icon_node: FontIcon
+var _tooltip: M3Tooltip
+
+# ============================================
+# LIFECYCLE
+# ============================================
+
+func _ready():
+	# Hide native CheckButton visuals
+	add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+	add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+	add_theme_stylebox_override("disabled", StyleBoxEmpty.new())
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	add_theme_icon_override("checked", PlaceholderTexture2D.new())
+	add_theme_icon_override("unchecked", PlaceholderTexture2D.new())
+	add_theme_icon_override("checked_disabled", PlaceholderTexture2D.new())
+	add_theme_icon_override("unchecked_disabled", PlaceholderTexture2D.new())
+	
+	# Set fixed size
+	var track_width_px = M3Units.dp(TRACK_WIDTH)
+	var track_height_px = M3Units.dp(TRACK_HEIGHT)
+	custom_minimum_size = Vector2(track_width_px, track_height_px)
+	
+	# Track press state for visual sizing
+	button_down.connect(func(): _is_pressing = true; queue_redraw())
+	button_up.connect(func(): _is_pressing = false; queue_redraw())
+	toggled.connect(func(_v): queue_redraw())
+	
+	_initialize_styleboxes()
+	_initialize_icon()
+	_setup_tooltip()
+
+func _setup_tooltip():
+	if m3_tooltip_text.is_empty():
+		return
+	_tooltip = M3Tooltip.new()
+	_tooltip.m3_tooltip_text = m3_tooltip_text
+	_tooltip.m3_tooltip_variant = m3_tooltip_variant
+	add_child(_tooltip)
+	mouse_entered.connect(_tooltip.show_for.bind(self))
+	mouse_exited.connect(_tooltip.hide_tooltip)
+
+func _initialize_styleboxes():
+	_track_sb = StyleBoxFlat.new()
+	_track_sb.set_border_width_all(0)
+	_track_sb.content_margin_left = 0
+	_track_sb.content_margin_top = 0
+	_track_sb.content_margin_right = 0
+	_track_sb.content_margin_bottom = 0
+	_track_sb.anti_aliasing = true
+	_track_sb.anti_aliasing_size = 1.0
+	
+	_thumb_sb = StyleBoxFlat.new()
+	_thumb_sb.set_border_width_all(0)
+	_thumb_sb.content_margin_left = 0
+	_thumb_sb.content_margin_top = 0
+	_thumb_sb.content_margin_right = 0
+	_thumb_sb.content_margin_bottom = 0
+	_thumb_sb.anti_aliasing = true
+	_thumb_sb.anti_aliasing_size = 1.0
+	
+	_focus_sb = StyleBoxFlat.new()
+	_focus_sb.set_border_width_all(0)
+	_focus_sb.content_margin_left = 0
+	_focus_sb.content_margin_top = 0
+	_focus_sb.content_margin_right = 0
+	_focus_sb.content_margin_bottom = 0
+	_focus_sb.anti_aliasing = true
+	_focus_sb.anti_aliasing_size = 1.0
+
+func _initialize_icon():
+	_icon_node = FontIcon.new()
+	_icon_node.name = "Icon"
+	_icon_node.icon_settings = FontIconSettings.new()
+	_icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
+	_icon_node.icon_settings.icon_font = "MaterialIcons"
+	_icon_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_icon_node.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_icon_node.visible = false
+	add_child(_icon_node)
+	_update_icon()
+
+func _update_icon():
+	if not _icon_node:
+		return
+	_icon_node.icon_settings.icon_name = icon_name
+	_icon_node.visible = not icon_name.is_empty()
+
+# ============================================
+# DRAW
+# ============================================
+
+func _notification(what: int):
+	match what:
+		NOTIFICATION_MOUSE_ENTER:
+			_hovered = true
+			queue_redraw()
+		NOTIFICATION_MOUSE_EXIT:
+			_hovered = false
+			queue_redraw()
+		NOTIFICATION_FOCUS_ENTER:
+			queue_redraw()
+		NOTIFICATION_FOCUS_EXIT:
+			queue_redraw()
+
+func _draw():
+	var track_rect = Rect2(Vector2.ZERO, size)
+	var is_on = button_pressed
+	var is_disabled = disabled
+	
+	# Determine thumb size
+	var thumb_size_dp: int
+	if _is_pressing:
+		thumb_size_dp = THUMB_PRESSED_SIZE
+	elif is_on:
+		thumb_size_dp = THUMB_ON_SIZE
+	else:
+		thumb_size_dp = THUMB_OFF_SIZE
+	
+	var thumb_size_px = M3Units.dp(thumb_size_dp)
+	
+	# Draw focus ring first (behind everything)
+	if has_focus() and not is_disabled:
+		_draw_focus_ring(track_rect)
+	
+	# Draw track
+	_draw_track(track_rect, is_on, is_disabled)
+	
+	# Draw thumb
+	var thumb_center = _draw_thumb(track_rect, thumb_size_px, is_on, is_disabled)
+	
+	# Update icon position and color
+	if _icon_node and _icon_node.visible:
+		_update_icon_position(thumb_center, thumb_size_px, is_on, is_disabled)
+
+func _draw_focus_ring(rect: Rect2):
+	var focus_rect = rect.grow(M3Units.dp(6))
+	var radius = int(focus_rect.size.y / 2.0)
+	
+	_focus_sb.bg_color = Color.TRANSPARENT
+	_focus_sb.border_color = M3Theme.get_on_surface()
+	_focus_sb.set_border_width_all(3)
+	_focus_sb.set_corner_radius_all(radius)
+	draw_style_box(_focus_sb, focus_rect)
+
+func _draw_track(rect: Rect2, is_on: bool, is_disabled: bool):
+	var radius = int(rect.size.y / 2.0)
+	
+	if is_disabled:
+		if is_on:
+			# Disabled ON: very subtle primary
+			var prim = M3Theme.get_primary()
+			_track_sb.bg_color = Color(prim.r, prim.g, prim.b, 0.12)
+			_track_sb.set_border_width_all(0)
+		else:
+			# Disabled OFF: very subtle surface with outline
+			var surf = M3Theme.get_surface_container()
+			var outl = M3Theme.get_outline()
+			_track_sb.bg_color = Color(surf.r, surf.g, surf.b, 0.12)
+			_track_sb.border_color = Color(outl.r, outl.g, outl.b, 0.12)
+			_track_sb.set_border_width_all(1)
+	elif is_on:
+		_track_sb.bg_color = M3Theme.get_primary()
+		_track_sb.set_border_width_all(0)
+	else:
+		_track_sb.bg_color = M3Theme.get_surface_container()
+		_track_sb.border_color = M3Theme.get_outline()
+		_track_sb.set_border_width_all(1)
+	
+	_track_sb.set_corner_radius_all(radius)
+	draw_style_box(_track_sb, rect)
+
+func _draw_thumb(rect: Rect2, thumb_size_px: float, is_on: bool, is_disabled: bool) -> Vector2:
+	var thumb_radius = thumb_size_px / 2.0
+	var pad_px = M3Units.dp(THUMB_PADDING)
+	
+	# Calculate thumb position
+	var min_x = pad_px + thumb_radius
+	var max_x = rect.size.x - pad_px - thumb_radius
+	var center_y = rect.size.y / 2.0
+	
+	var center_x: float
+	if is_on:
+		center_x = max_x
+	else:
+		center_x = min_x
+	
+	var thumb_rect = Rect2(
+		Vector2(center_x - thumb_radius, center_y - thumb_radius),
+		Vector2(thumb_size_px, thumb_size_px)
+	)
+	
+	# Thumb color with hover overlay
+	var base_color: Color
+	if is_disabled:
+		var on_surf = M3Theme.get_on_surface()
+		base_color = Color(on_surf.r, on_surf.g, on_surf.b, 0.12)
+	elif is_on:
+		base_color = M3Theme.get_on_primary()
+	else:
+		base_color = M3Theme.get_surface()
+	
+	# Apply hover state layer
+	if _hovered and not is_disabled:
+		var overlay_color: Color
+		if is_on:
+			overlay_color = M3Theme.get_primary()
+		else:
+			overlay_color = M3Theme.get_on_surface()
+		base_color = M3Theme.state_overlay(base_color, overlay_color, M3Theme.OPACITY_HOVER)
+	
+	_thumb_sb.bg_color = base_color
+	_thumb_sb.set_corner_radius_all(int(thumb_radius))
+	draw_style_box(_thumb_sb, thumb_rect)
+	
+	return Vector2(center_x, center_y)
+
+func _update_icon_position(thumb_center: Vector2, thumb_size_px: float, is_on: bool, is_disabled: bool):
+	if not _icon_node:
+		return
+	
+	# Position icon node at thumb center
+	_icon_node.position = Vector2(
+		thumb_center.x - _icon_node.size.x / 2.0,
+		thumb_center.y - _icon_node.size.y / 2.0
+	)
+	
+	# Update icon color
+	var icon_color: Color
+	if is_disabled:
+		var on_surf_var = M3Theme.get_on_surface_variant()
+		icon_color = Color(on_surf_var.r, on_surf_var.g, on_surf_var.b, 0.38)
+	elif is_on:
+		icon_color = M3Theme.get_primary()
+	else:
+		icon_color = M3Theme.get_on_surface_variant()
+	
+	_icon_node.icon_settings.icon_color = icon_color
+
+# ============================================
+# THEME
+# ============================================
+
+func refresh_theme():
+	queue_redraw()

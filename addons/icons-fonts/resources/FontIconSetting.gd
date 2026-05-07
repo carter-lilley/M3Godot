@@ -58,7 +58,7 @@ func update_label_settings(label_settings: LabelSettings) -> void:
 		"Emojis":
 			label_settings.font = load(IconsFonts.emojis_font)
 
-	label_settings.font_size = icon_size
+	label_settings.font_size = max(1, icon_size)
 	label_settings.font_color = icon_color
 	label_settings.outline_color = outline_color
 	label_settings.outline_size = outline_size

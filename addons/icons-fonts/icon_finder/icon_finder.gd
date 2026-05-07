@@ -39,11 +39,19 @@ func _ready():
 		renderer.tooltip_text = tooltip
 
 func setup():
+	# Wait for fonts to be loaded before rendering
+	if IconsFonts.material_icons.is_empty() or IconsFonts.emojis.is_empty():
+		await IconsFonts.font_loaded
+	
 	for renderer: IconsFontsRender in icons_renderers:
 		if !renderer.is_node_ready(): await ready
 		renderer.setup()
 		renderer.meta_clicked.connect(_on_meta)
+		renderer.update_table("")
 	icons_renderer = icons_renderers[0]
+	
+	# Initial render after setup
+	update_table("")
 
 func update_icons_size(value: int):
 	size_label.text = str(value)
