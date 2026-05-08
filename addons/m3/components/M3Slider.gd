@@ -322,14 +322,7 @@ func _ready():
 	_setup_tooltip()
 
 func _setup_tooltip():
-	if m3_tooltip_text.is_empty():
-		return
-	_tooltip = M3Tooltip.new()
-	_tooltip.m3_tooltip_text = m3_tooltip_text
-	_tooltip.m3_tooltip_variant = m3_tooltip_variant
-	add_child(_tooltip)
-	mouse_entered.connect(_tooltip.show_for.bind(self))
-	mouse_exited.connect(_tooltip.hide_tooltip)
+	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
 
 func _initialize_caches():
 	# Pre-allocate StyleBoxFlat instances for reuse

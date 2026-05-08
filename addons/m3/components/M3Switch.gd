@@ -66,25 +66,8 @@ var _tooltip: M3Tooltip
 func _enter_tree():
 	# Completely disable native Button/CheckButton drawing
 	flat = true
-	
-	# Hide native CheckButton visuals
-	for style in ["normal", "pressed", "hover", "disabled", "focus", "hover_pressed", "normal_mirrored", "pressed_mirrored", "hover_mirrored", "disabled_mirrored", "focus_mirrored", "hover_pressed_mirrored"]:
-		add_theme_stylebox_override(style, StyleBoxEmpty.new())
-	
-	# Hide native CheckButton icons completely
-	var empty_img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	empty_img.fill(Color.TRANSPARENT)
-	var empty_tex := ImageTexture.create_from_image(empty_img)
-	
-	for icon in ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored"]:
-		add_theme_icon_override(icon, empty_tex)
-	
-	# Also hide icon colors
-	add_theme_color_override("icon_normal_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_pressed_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_hover_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_hover_pressed_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_disabled_color", Color.TRANSPARENT)
+	M3Theme.hide_native_checkbutton_styleboxes(self)
+	M3Theme.hide_native_check_icons(self)
 
 func _ready():
 	# Set fixed size - never expand in containers
@@ -107,14 +90,7 @@ func _get_minimum_size() -> Vector2:
 	return Vector2(M3Units.dp(TRACK_WIDTH), M3Units.dp(TRACK_HEIGHT))
 
 func _setup_tooltip():
-	if m3_tooltip_text.is_empty():
-		return
-	_tooltip = M3Tooltip.new()
-	_tooltip.m3_tooltip_text = m3_tooltip_text
-	_tooltip.m3_tooltip_variant = m3_tooltip_variant
-	add_child(_tooltip)
-	mouse_entered.connect(_tooltip.show_for.bind(self))
-	mouse_exited.connect(_tooltip.hide_tooltip)
+	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
 
 func _initialize_styleboxes():
 	_track_sb = StyleBoxFlat.new()

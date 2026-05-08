@@ -63,6 +63,19 @@ func _ready():
 	# Change to OVERLAY if you want nav to float over content
 	# nav_rail.placement_mode = M3Navigation.PlacementMode.INTEGRATED
 	# nav_bar.placement_mode = M3Navigation.PlacementMode.INTEGRATED
+	
+	# Connect snackbar test button
+	var snackbar_btn = $MarginContainer/ScrollContainer/VBoxContainer/SnackbarTestButton
+	if snackbar_btn:
+		snackbar_btn.pressed.connect(_on_snackbar_test_pressed)
+
+func _on_snackbar_test_pressed():
+	M3Snackbar.show_message(
+		"Item deleted",
+		"Undo",
+		func(): print("Undo clicked!"),
+		true
+	)
 
 func _on_dark_mode_toggled(pressed: bool):
 	dark_mode = pressed
@@ -110,7 +123,7 @@ func apply_theme():
 
 func _update_m3_components(node: Node):
 	for child in node.get_children():
-		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField:
+		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip:
 			child.refresh_theme()
 		if child.get_child_count() > 0:
 			_update_m3_components(child)

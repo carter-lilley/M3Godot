@@ -126,6 +126,12 @@ func _create_timer():
 # ============================================
 
 ## Show tooltip anchored to the given Control node.
+## Optionally provide a custom anchor rect for positioning (e.g. checkbox box only).
+var _anchor_rect_override: Rect2 = Rect2()
+
+func set_anchor_rect_override(rect: Rect2):
+	_anchor_rect_override = rect
+
 func show_for(anchor: Control):
 	if not anchor:
 		return
@@ -178,9 +184,20 @@ func _position_tooltip():
 	if not _anchor_node:
 		return
 	
-	var anchor_rect = _anchor_node.get_global_rect()
+	var anchor_rect: Rect2
+	if _anchor_rect_override.has_area():
+		# Convert local rect to global coordinates
+		var global_pos = _anchor_node.global_position + _anchor_rect_override.position
+		anchor_rect = Rect2(global_pos, _anchor_rect_override.size)
+	elif _anchor_node.has_method("get_tooltip_anchor_rect"):
+		# Component provides custom anchor rect (e.g. checkbox box only)
+		var local_rect = _anchor_node.get_tooltip_anchor_rect()
+		var global_pos = _anchor_node.global_position + local_rect.position
+		anchor_rect = Rect2(global_pos, local_rect.size)
+	else:
+		anchor_rect = _anchor_node.get_global_rect()
 	var tooltip_size = _get_tooltip_size()
-	var viewport_size = get_viewport_rect().size
+	var viewport_size = get_viewport().get_visible_rect().size
 	var margin = M3Units.dp(VIEWPORT_MARGIN)
 	
 	var pos: Vector2
@@ -190,12 +207,14 @@ func _position_tooltip():
 	else:
 		pos = _position_rich(anchor_rect, tooltip_size, viewport_size, margin)
 	
-	# Snap to 8dp grid
-	var grid = M3Units.dp(8)
-	pos = Vector2(
-		floor(pos.x / grid) * grid,
-		floor(pos.y / grid) * grid
-	)
+	# Snap to 8dp grid for rich tooltips only
+	# Plain tooltips should be precisely centered
+	if m3_tooltip_variant == Variant.RICH:
+		var grid = M3Units.dp(8)
+		pos = Vector2(
+			floor(pos.x / grid) * grid,
+			floor(pos.y / grid) * grid
+		)
 	
 	global_position = pos
 	size = tooltip_size
@@ -280,15 +299,21 @@ func _get_placement_for_anchor() -> String:
 		return "below"
 	return "above"
 
+# Static type arrays for fast boundary checks (avoid long 'is' chains)
+static var _BOUNDARY_TYPES = [M3Button, M3IconButton, M3Switch, M3Slider, M3NavigationDestination, M3TextField]
+static var _NATIVE_BOUNDARY_TYPES = [Button, LineEdit, TextEdit, CheckBox, CheckButton, OptionButton]
+
 func _has_visual_boundary(node: Control) -> bool:
 	if not node:
 		return false
-	# M3 components with clear visual boundaries
-	if node is M3Button or node is M3IconButton or node is M3Switch or node is M3Slider or node is M3NavigationDestination or node is M3TextField:
-		return true
-	# Native Godot controls that typically have boundaries
-	if node is Button or node is LineEdit or node is TextEdit or node is CheckBox or node is CheckButton or node is OptionButton:
-		return true
+	for t in _BOUNDARY_TYPES:
+		if is_instance_of(node, t):
+			return true
+	if is_instance_of(node, M3Checkbox):
+		return false
+	for t in _NATIVE_BOUNDARY_TYPES:
+		if is_instance_of(node, t):
+			return true
 	return false
 
 func _is_in_app_bar(node: Control) -> bool:
@@ -353,23 +378,14 @@ func _get_tooltip_size() -> Vector2:
 		var pad_v = M3Units.dp(PLAIN_PADDING_V)
 		var max_w = M3Units.dp(PLAIN_MAX_WIDTH)
 		
-		var old_size = _label.size
-		var old_autowrap = _label.autowrap_mode
-		
-		# Measure unwrapped width for sizing
-		_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-		var unwrapped_size = _label.get_minimum_size()
-		
-		# Measure wrapped height at max width
-		_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		# Single measurement: constrain width and let Label compute wrapped min size.
+		# With AUTOWRAP_WORD_SMART, get_minimum_size() respects the current size.x
+		# as the wrapping width. For short text, x is the unwrapped width.
 		_label.size.x = max_w - pad_h * 2
-		var wrapped_size = _label.get_minimum_size()
+		var text_size = _label.get_minimum_size()
 		
-		_label.size = old_size
-		_label.autowrap_mode = old_autowrap
-		
-		var width = min(unwrapped_size.x + pad_h * 2, max_w)
-		var height = max(wrapped_size.y + pad_v * 2, M3Units.dp(24))
+		var width = min(text_size.x + pad_h * 2, max_w)
+		var height = max(text_size.y + pad_v * 2, M3Units.dp(24))
 		
 		return Vector2(width, height)
 	else:
@@ -398,11 +414,8 @@ func _update_appearance():
 		_label.add_theme_font_override("font", fonts["medium"])
 		_label.add_theme_font_size_override("font_size", M3Units.dp(12))
 		
-		var sb = StyleBoxFlat.new()
-		sb.bg_color = bg
-		sb.set_corner_radius_all(M3Units.dpi(PLAIN_RADIUS))
-		sb.anti_aliasing = true
-		sb.anti_aliasing_size = 1.0
+		# Plain tooltip with Elevation 1 shadow
+		var sb = M3Theme.make_shadow(bg, M3Units.dpi(PLAIN_RADIUS), 2, Vector2(0, 1), Color(0, 0, 0, 0.15))
 		_bg_panel.add_theme_stylebox_override("panel", sb)
 		
 	else:
@@ -418,11 +431,8 @@ func _update_appearance():
 		_rich_label.add_theme_font_override("bold_font", fonts["bold"])
 		_rich_label.add_theme_font_size_override("normal_font_size", M3Units.dp(14))
 		
-		var sb = StyleBoxFlat.new()
-		sb.bg_color = bg
-		sb.set_corner_radius_all(M3Units.dpi(RICH_RADIUS))
-		sb.anti_aliasing = true
-		sb.anti_aliasing_size = 1.0
+		# Rich tooltip with Elevation 2 shadow
+		var sb = M3Theme.make_shadow(bg, M3Units.dpi(RICH_RADIUS), 4, Vector2(0, 2), Color(0, 0, 0, 0.18))
 		_bg_panel.add_theme_stylebox_override("panel", sb)
 
 func _update_content():

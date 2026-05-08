@@ -137,6 +137,11 @@ var _cached_style_disabled: StyleBoxFlat
 var _cached_style_focus: StyleBoxFlat
 var _cached_style_hover_pressed: StyleBoxFlat
 
+# Cached variant colors (invalidated when variant/type/disabled change)
+var _cached_colors_hash: int = -1
+var _cached_colors_normal: Dictionary = {}
+var _cached_colors_selected: Dictionary = {}
+
 # ============================================
 # LIFECYCLE
 # ============================================
@@ -159,14 +164,7 @@ func _ready():
 	_setup_tooltip()
 
 func _setup_tooltip():
-	if m3_tooltip_text.is_empty():
-		return
-	_tooltip = M3Tooltip.new()
-	_tooltip.m3_tooltip_text = m3_tooltip_text
-	_tooltip.m3_tooltip_variant = m3_tooltip_variant
-	add_child(_tooltip)
-	mouse_entered.connect(_tooltip.show_for.bind(self))
-	mouse_exited.connect(_tooltip.hide_tooltip)
+	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
 
 func _on_button_down():
 	_is_pressing = true
@@ -240,7 +238,16 @@ func _on_toggled(_pressed: bool):
 	queue_redraw()
 
 func _get_variant_colors(selected: bool) -> Dictionary:
-	"""Get colors for a variant in either selected (on) or unselected (off) toggle state."""
+	"""Get cached colors for a variant in either selected (on) or unselected (off) toggle state."""
+	var state = hash([button_variant, button_type, disabled])
+	if _cached_colors_hash != state:
+		_cached_colors_hash = state
+		_cached_colors_normal = _compute_variant_colors(false)
+		_cached_colors_selected = _compute_variant_colors(true)
+	return _cached_colors_selected if selected else _cached_colors_normal
+
+func _compute_variant_colors(selected: bool) -> Dictionary:
+	"""Compute colors for a variant (uncached)."""
 	var result = {}
 	
 	match button_variant:
@@ -505,6 +512,7 @@ func _update_colors():
 
 func refresh_theme():
 	"""Refresh theme when dark mode changes. Called by parent."""
+	_cached_colors_hash = -1
 	_update_theme()
 
 func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {}):

@@ -58,6 +58,10 @@ var _hovered: bool = false
 var _pressed: bool = false
 var _tooltip: M3Tooltip
 
+# Cached StyleBoxFlats (allocated once, mutated per draw)
+var _cached_box_sb: StyleBoxFlat
+var _cached_overlay_sb: StyleBoxFlat
+
 # ============================================
 # LIFECYCLE
 # ============================================
@@ -65,21 +69,7 @@ var _tooltip: M3Tooltip
 func _enter_tree():
 	# Hide native CheckBox visuals
 	flat = true
-	
-	var empty_img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	empty_img.fill(Color.TRANSPARENT)
-	var empty_tex := ImageTexture.create_from_image(empty_img)
-	
-	for icon in ["checked", "unchecked", "checked_disabled", "unchecked_disabled"]:
-		add_theme_icon_override(icon, empty_tex)
-	
-	add_theme_color_override("icon_normal_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_pressed_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_hover_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_hover_pressed_color", Color.TRANSPARENT)
-	add_theme_color_override("icon_disabled_color", Color.TRANSPARENT)
-	
-	# Style label text
+	M3Theme.hide_native_check_icons(self)
 	add_theme_font_size_override("font_size", M3Units.dp(14))
 
 func _ready():
@@ -98,25 +88,29 @@ func _ready():
 	mouse_entered.connect(func(): _hovered = true; queue_redraw())
 	mouse_exited.connect(func(): _hovered = false; queue_redraw())
 	
+	_initialize_styleboxes()
 	_setup_tooltip()
 
 func _setup_tooltip():
-	if m3_tooltip_text.is_empty():
-		return
-	_tooltip = M3Tooltip.new()
-	_tooltip.m3_tooltip_text = m3_tooltip_text
-	_tooltip.m3_tooltip_variant = m3_tooltip_variant
-	add_child(_tooltip)
-	mouse_entered.connect(_tooltip.show_for.bind(self))
-	mouse_exited.connect(_tooltip.hide_tooltip)
+	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
 
 # ============================================
 # DRAW
 # ============================================
 
-
+func _initialize_styleboxes():
+	_cached_box_sb = StyleBoxFlat.new()
+	_cached_box_sb.anti_aliasing = true
+	_cached_box_sb.anti_aliasing_size = 1.0
+	
+	_cached_overlay_sb = StyleBoxFlat.new()
+	_cached_overlay_sb.anti_aliasing = true
+	_cached_overlay_sb.anti_aliasing_size = 1.0
 
 func _draw():
+	if not _cached_box_sb:
+		_initialize_styleboxes()
+	
 	var is_checked = button_pressed
 	var is_disabled = disabled
 	
@@ -149,29 +143,17 @@ func _draw():
 			_draw_checkmark(box_rect, is_disabled)
 
 func _draw_box(rect: Rect2, is_checked: bool, is_disabled: bool):
-	var sb = StyleBoxFlat.new()
+	var sb = _cached_box_sb
 	sb.set_corner_radius_all(M3Units.dpi(CORNER_RADIUS))
-	sb.anti_aliasing = true
-	sb.anti_aliasing_size = 1.0
 	
 	var alpha = 0.38 if is_disabled else 1.0
 	
 	if is_checked:
-		# Filled box
-		var fill_color: Color
-		if error:
-			fill_color = M3Theme.get_error()
-		else:
-			fill_color = M3Theme.get_primary()
+		var fill_color = M3Theme.get_error() if error else M3Theme.get_primary()
 		sb.bg_color = Color(fill_color.r, fill_color.g, fill_color.b, fill_color.a * alpha)
 		sb.set_border_width_all(0)
 	else:
-		# Outlined box
-		var border_color: Color
-		if error:
-			border_color = M3Theme.get_error()
-		else:
-			border_color = M3Theme.get_outline()
+		var border_color = M3Theme.get_error() if error else M3Theme.get_outline()
 		sb.bg_color = Color.TRANSPARENT
 		sb.border_color = Color(border_color.r, border_color.g, border_color.b, border_color.a * alpha)
 		sb.set_border_width_all(M3Units.dp(BORDER_WIDTH))
@@ -219,25 +201,23 @@ func _draw_state_overlay(center: Vector2, is_checked: bool):
 	
 	# M3 spec: hover overlay uses on-surface color at state layer opacity
 	var overlay_color = M3Theme.get_on_surface()
-	var opacity: float
-	if _pressed:
-		opacity = 0.12
-	else:
-		opacity = 0.08
+	var opacity = 0.12 if _pressed else 0.08
 	var color = Color(overlay_color.r, overlay_color.g, overlay_color.b, opacity)
 	
-	# Use StyleBoxFlat for better anti-aliased circle rendering
-	var sb = StyleBoxFlat.new()
+	var sb = _cached_overlay_sb
 	sb.bg_color = color
 	sb.set_corner_radius_all(int(radius))
-	sb.anti_aliasing = true
-	sb.anti_aliasing_size = 1.0
 	var rect = Rect2(center - Vector2(radius, radius), Vector2(radius * 2, radius * 2))
 	draw_style_box(sb, rect)
 
 # ============================================
 # PUBLIC
 # ============================================
+
+func get_tooltip_anchor_rect() -> Rect2:
+	# Return full touch target rect for tooltip positioning
+	# This gives proper spacing above the checkbox
+	return Rect2(Vector2.ZERO, size)
 
 func refresh_theme():
 	queue_redraw()

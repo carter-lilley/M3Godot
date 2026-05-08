@@ -2734,6 +2734,10 @@ m3_tooltip_text = "[b]Rich Tooltip[/b]
 This tooltip supports [color=red]colors[/color], [i]italics[/i], and more."
 m3_tooltip_variant = 1
 
+[node name="SnackbarTestButton" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=999999080]
+layout_mode = 2
+text = "Show Snackbar"
+
 [node name="NavigationRail" type="PanelContainer" parent="." unique_id=999999030 node_paths=PackedStringArray("content_node")]
 z_index = 1
 layout_mode = 1

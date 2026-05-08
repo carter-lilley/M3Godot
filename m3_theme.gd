@@ -248,6 +248,55 @@ static func make_empty() -> StyleBoxEmpty:
 	return StyleBoxEmpty.new()
 
 # ============================================
+# SHARED TEXTURE
+# ============================================
+
+static var _empty_texture: ImageTexture
+
+static func get_empty_texture() -> ImageTexture:
+	if _empty_texture == null:
+		var empty_img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		empty_img.fill(Color.TRANSPARENT)
+		_empty_texture = ImageTexture.create_from_image(empty_img)
+	return _empty_texture
+
+# ============================================
+# SHARED HELPERS
+# ============================================
+
+## Setup an M3Tooltip on any Control node.
+static func setup_tooltip(node: Control, text: String, variant: int) -> M3Tooltip:
+	if text.is_empty():
+		return null
+	var tooltip = M3Tooltip.new()
+	tooltip.m3_tooltip_text = text
+	tooltip.m3_tooltip_variant = variant
+	node.add_child(tooltip)
+	node.mouse_entered.connect(tooltip.show_for.bind(node))
+	node.mouse_exited.connect(tooltip.hide_tooltip)
+	return tooltip
+
+## Hide native CheckBox/CheckButton icon visuals.
+## Applies to both CheckBox and CheckButton derived nodes.
+static func hide_native_check_icons(node: Control):
+	var empty_tex = get_empty_texture()
+	for icon in ["checked", "unchecked", "checked_disabled", "unchecked_disabled"]:
+		node.add_theme_icon_override(icon, empty_tex)
+	node.add_theme_color_override("icon_normal_color", Color.TRANSPARENT)
+	node.add_theme_color_override("icon_pressed_color", Color.TRANSPARENT)
+	node.add_theme_color_override("icon_hover_color", Color.TRANSPARENT)
+	node.add_theme_color_override("icon_hover_pressed_color", Color.TRANSPARENT)
+	node.add_theme_color_override("icon_disabled_color", Color.TRANSPARENT)
+
+## Hide native CheckButton stylebox visuals.
+static func hide_native_checkbutton_styleboxes(node: CheckButton):
+	var empty = make_empty()
+	for style in ["normal", "pressed", "hover", "disabled", "focus", "hover_pressed",
+				  "normal_mirrored", "pressed_mirrored", "hover_mirrored",
+				  "disabled_mirrored", "focus_mirrored", "hover_pressed_mirrored"]:
+		node.add_theme_stylebox_override(style, empty)
+
+# ============================================
 # FONTS
 # ============================================
 

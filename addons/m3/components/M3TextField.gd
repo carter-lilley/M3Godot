@@ -149,6 +149,9 @@ var _tooltip: M3Tooltip
 var _cached_bg_sb: StyleBoxFlat
 var _cached_border_sb: StyleBoxFlat
 var _cached_patch_sb: StyleBoxFlat
+var _cached_empty_normal: StyleBoxEmpty
+var _cached_empty_focus: StyleBoxEmpty
+var _cached_empty_readonly: StyleBoxEmpty
 var _updating_layout: bool = false
 
 # ============================================
@@ -194,14 +197,7 @@ func _ready():
 	call_deferred("_update_layout")
 
 func _setup_tooltip():
-	if m3_tooltip_text.is_empty():
-		return
-	_tooltip = M3Tooltip.new()
-	_tooltip.m3_tooltip_text = m3_tooltip_text
-	_tooltip.m3_tooltip_variant = m3_tooltip_variant
-	add_child(_tooltip)
-	mouse_entered.connect(_tooltip.show_for.bind(self))
-	mouse_exited.connect(_tooltip.hide_tooltip)
+	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
 
 func _initialize_styleboxes():
 	_cached_bg_sb = StyleBoxFlat.new()
@@ -216,6 +212,13 @@ func _initialize_styleboxes():
 	_cached_patch_sb = StyleBoxFlat.new()
 	_cached_patch_sb.set_corner_radius_all(0)
 	_cached_patch_sb.anti_aliasing = false
+	
+	# Pooled StyleBoxEmpty instances for LineEdit margin overrides
+	# LineEdit only re-reads margins on new resource assignment, but we can
+	# reuse instances to avoid per-layout allocation churn.
+	_cached_empty_normal = StyleBoxEmpty.new()
+	_cached_empty_focus = StyleBoxEmpty.new()
+	_cached_empty_readonly = StyleBoxEmpty.new()
 
 func _create_visual_children():
 	# Background panel - draws behind parent (show_behind_parent) so text renders on top
@@ -382,14 +385,12 @@ func _update_bg_panel():
 		if not editable:
 			bg_color = M3Theme.disabled_color(bg_color)
 		
-		var sb = StyleBoxFlat.new()
+		var sb = _cached_bg_sb
 		sb.bg_color = bg_color
-		sb.set_corner_radius_all(0)
 		sb.corner_radius_top_left = M3Units.dpi(RADIUS)
 		sb.corner_radius_top_right = M3Units.dpi(RADIUS)
-		sb.set_border_width_all(0)
-		sb.anti_aliasing = true
-		sb.anti_aliasing_size = 1.0
+		sb.corner_radius_bottom_left = 0
+		sb.corner_radius_bottom_right = 0
 		_bg_panel.add_theme_stylebox_override("panel", sb)
 		_bg_panel.visible = true
 	else:
@@ -523,28 +524,25 @@ func _update_layout():
 	if field_variant == Variant.FILLED and should_float:
 		text_top = M3Units.dp(14.0)
 	
-	# Create fresh stylebox instances (LineEdit only re-reads margins on new resource)
-	var style_normal = StyleBoxEmpty.new()
-	style_normal.content_margin_left = text_left
-	style_normal.content_margin_right = text_right
-	style_normal.content_margin_top = text_top
-	style_normal.content_margin_bottom = text_bottom
+	# Reuse pooled StyleBoxEmpty instances (LineEdit only re-reads margins on new resource)
+	_cached_empty_normal.content_margin_left = text_left
+	_cached_empty_normal.content_margin_right = text_right
+	_cached_empty_normal.content_margin_top = text_top
+	_cached_empty_normal.content_margin_bottom = text_bottom
 	
-	var style_focus = StyleBoxEmpty.new()
-	style_focus.content_margin_left = text_left
-	style_focus.content_margin_right = text_right
-	style_focus.content_margin_top = text_top
-	style_focus.content_margin_bottom = text_bottom
+	_cached_empty_focus.content_margin_left = text_left
+	_cached_empty_focus.content_margin_right = text_right
+	_cached_empty_focus.content_margin_top = text_top
+	_cached_empty_focus.content_margin_bottom = text_bottom
 	
-	var style_readonly = StyleBoxEmpty.new()
-	style_readonly.content_margin_left = text_left
-	style_readonly.content_margin_right = text_right
-	style_readonly.content_margin_top = text_top
-	style_readonly.content_margin_bottom = text_bottom
+	_cached_empty_readonly.content_margin_left = text_left
+	_cached_empty_readonly.content_margin_right = text_right
+	_cached_empty_readonly.content_margin_top = text_top
+	_cached_empty_readonly.content_margin_bottom = text_bottom
 	
-	add_theme_stylebox_override("normal", style_normal)
-	add_theme_stylebox_override("focus", style_focus)
-	add_theme_stylebox_override("read_only", style_readonly)
+	add_theme_stylebox_override("normal", _cached_empty_normal)
+	add_theme_stylebox_override("focus", _cached_empty_focus)
+	add_theme_stylebox_override("read_only", _cached_empty_readonly)
 	
 	# Floating label
 	if _floating_label and not label_text.is_empty():
