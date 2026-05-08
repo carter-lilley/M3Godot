@@ -45,6 +45,7 @@ func _on_visibility_changed():
 func setup():
 	set_meta_underline(false)
 	set_icons_size(IconsFonts.preview_size)
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 func update_table(filter := ""):
 	var data := get_font_data()
@@ -72,9 +73,9 @@ func update_table(filter := ""):
 		if filter and filter.to_lower() not in key: continue
 		cells -= 1
 		if cells <= 0: cells = columns
-		var link := "[url={link}]{icon}[/url]"
+		var link := "[url={link}][hint={hint}]{icon}[/hint][/url]"
 		var icon := get_icon(key)
-		link = link.format({"link": key, "icon": icon})
+		link = link.format({"link": key, "hint": key, "icon": icon})
 
 		var cell := "[cell]{link}[/cell]"
 		table += cell.format({"link": link})

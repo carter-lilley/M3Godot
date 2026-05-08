@@ -13,7 +13,7 @@ func _ready():
 	apply_theme()
 	
 	# Connect dark mode toggle
-	var dark_mode_toggle = $MarginContainer/ScrollContainer/VBoxContainer/RowHeader/DarkModeToggle
+	var dark_mode_toggle = $MarginContainer/ScrollContainer/VBoxContainer/DarkmodeToggle
 	dark_mode_toggle.button_pressed = dark_mode
 	dark_mode_toggle.toggled.connect(_on_dark_mode_toggled)
 	
@@ -32,13 +32,6 @@ func _ready():
 	
 	# Set RichTextLabel content
 	$MarginContainer/ScrollContainer/VBoxContainer/RowTextAreas/RichTextLabel.text = "[b]Bold[/b] and [i]italic[/i] text\n[color=red]Colored text[/color]\n[code]Code snippet[/code]"
-	
-	# Add content to inner ScrollContainer
-	var scroll_vbox = $MarginContainer/ScrollContainer/VBoxContainer/ScrollContainer/VBoxContainer
-	for i in range(20):
-		var label = Label.new()
-		label.text = "Scroll item %d" % (i + 1)
-		scroll_vbox.add_child(label)
 	
 	# Configure NavigationRail
 	var nav_rail = $NavigationRail

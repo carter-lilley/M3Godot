@@ -22,7 +22,7 @@ IconsFonts="*uid://b573s24lmntbd"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/icons-fonts/plugin.cfg")
+enabled=PackedStringArray("res://addons/icons-fonts/plugin.cfg", "res://addons/m3/plugin.cfg")
 
 [physics]
 

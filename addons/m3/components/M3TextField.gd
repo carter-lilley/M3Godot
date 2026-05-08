@@ -149,10 +149,16 @@ var _tooltip: M3Tooltip
 var _cached_bg_sb: StyleBoxFlat
 var _cached_border_sb: StyleBoxFlat
 var _cached_patch_sb: StyleBoxFlat
+var _updating_layout: bool = false
 
 # ============================================
 # LIFECYCLE
 # ============================================
+
+func _init():
+	# Set defaults before entering tree so containers see correct flags
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 func _ready():
 	clip_contents = false
@@ -183,6 +189,9 @@ func _ready():
 	
 	_ready_called = true
 	queue_redraw()
+	
+	# Force layout after container has sized us
+	call_deferred("_update_layout")
 
 func _setup_tooltip():
 	if m3_tooltip_text.is_empty():
@@ -261,7 +270,7 @@ func _create_visual_children():
 
 func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
-		if _ready_called:
+		if _ready_called and not _updating_layout:
 			_update_layout()
 			queue_redraw()
 
@@ -453,6 +462,10 @@ func _update_theme():
 	_supporting_label.add_theme_font_size_override("font_size", M3Units.dp(SUPPORTING_FONT_SIZE))
 
 func _update_layout():
+	if _updating_layout:
+		return
+	_updating_layout = true
+	
 	var h_padding = M3Units.dp(H_PADDING)
 	var icon_size = M3Units.dp(ICON_SIZE)
 	var icon_gap = M3Units.dp(ICON_GAP)
@@ -499,10 +512,13 @@ func _update_layout():
 	var should_float = _should_float_label() and not label_text.is_empty()
 	
 	# Native LineEdit text padding (content margins on stylebox)
+	# Text area is confined to container_height; supporting text drawn below by _supporting_label
 	var text_left = current_x
 	var text_right = size.x - right_x
 	var text_top = 0.0
-	var text_bottom = max(0, size.y - container_height)  # Account for supporting text area below container
+	var text_bottom = 0.0
+	if not supporting_text.is_empty() or not error_text.is_empty():
+		text_bottom = M3Units.dp(SUPPORTING_HEIGHT)
 	
 	if field_variant == Variant.FILLED and should_float:
 		text_top = M3Units.dp(14.0)
@@ -551,6 +567,8 @@ func _update_layout():
 	if _supporting_label:
 		_supporting_label.position = Vector2(h_padding, container_height + M3Units.dp(4.0))
 		_supporting_label.size = Vector2(available_width - h_padding * 2, M3Units.dp(SUPPORTING_HEIGHT))
+	
+	_updating_layout = false
 
 func _update_floating_label():
 	if not _floating_label:

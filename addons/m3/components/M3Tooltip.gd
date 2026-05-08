@@ -33,6 +33,12 @@ enum Variant { PLAIN, RICH }
 
 @export var show_delay_ms: int = 500
 
+@export var show_on_focus: bool = true:
+	set(value):
+		show_on_focus = value
+		if _ready_called:
+			_update_focus_connections()
+
 # ============================================
 # CONSTANTS
 # ============================================
@@ -60,6 +66,9 @@ var _bg_panel: Panel
 var _ready_called: bool = false
 var _show_timer: Timer
 var _anchor_node: Control = null
+var _is_hovering: bool = false
+var _is_focused: bool = false
+var _focus_acquired_with_hover: bool = false
 
 # ============================================
 # LIFECYCLE
@@ -100,6 +109,11 @@ func _create_visuals():
 	_rich_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_rich_label)
 
+func _exit_tree():
+	if _anchor_node:
+		_disconnect_anchor_signals()
+		_anchor_node = null
+
 func _create_timer():
 	_show_timer = Timer.new()
 	_show_timer.one_shot = true
@@ -115,7 +129,17 @@ func _create_timer():
 func show_for(anchor: Control):
 	if not anchor:
 		return
+	
+	# Disconnect from previous anchor if different
+	if _anchor_node and _anchor_node != anchor:
+		_disconnect_anchor_signals()
+	
 	_anchor_node = anchor
+	_is_hovering = true
+	
+	# Connect focus signals if needed
+	if show_on_focus:
+		_connect_focus_signals()
 	
 	# Cancel any pending show
 	_show_timer.stop()
@@ -126,8 +150,11 @@ func show_for(anchor: Control):
 
 ## Hide tooltip immediately.
 func hide_tooltip():
-	_show_timer.stop()
-	hide()
+	_is_hovering = false
+	# Hide immediately if not focused, or if focus was acquired from mouse click
+	if not _is_focused or _focus_acquired_with_hover:
+		_show_timer.stop()
+		hide()
 
 # ============================================
 # PRIVATE
@@ -135,6 +162,10 @@ func hide_tooltip():
 
 func _on_timer_timeout():
 	if not _anchor_node:
+		return
+	
+	# Only show if hovering or focused
+	if not _is_hovering and not _is_focused:
 		return
 	
 	_update_appearance()
@@ -269,6 +300,52 @@ func _is_in_app_bar(node: Control) -> bool:
 			return true
 		parent = parent.get_parent()
 	return false
+
+# ============================================
+# FOCUS HANDLING
+# ============================================
+
+func _connect_focus_signals():
+	if not _anchor_node:
+		return
+	if not _anchor_node.focus_entered.is_connected(_on_anchor_focus_entered):
+		_anchor_node.focus_entered.connect(_on_anchor_focus_entered)
+	if not _anchor_node.focus_exited.is_connected(_on_anchor_focus_exited):
+		_anchor_node.focus_exited.connect(_on_anchor_focus_exited)
+
+func _disconnect_anchor_signals():
+	if not _anchor_node:
+		return
+	if _anchor_node.focus_entered.is_connected(_on_anchor_focus_entered):
+		_anchor_node.focus_entered.disconnect(_on_anchor_focus_entered)
+	if _anchor_node.focus_exited.is_connected(_on_anchor_focus_exited):
+		_anchor_node.focus_exited.disconnect(_on_anchor_focus_exited)
+	_focus_acquired_with_hover = false
+
+func _on_anchor_focus_entered():
+	_is_focused = true
+	# If focus was acquired while hovering, treat as click focus - should still hide on mouse exit
+	_focus_acquired_with_hover = _is_hovering
+	if not visible:
+		_show_timer.stop()
+		_show_timer.start()
+
+func _on_anchor_focus_exited():
+	_is_focused = false
+	_focus_acquired_with_hover = false
+	if not _is_hovering:
+		_show_timer.stop()
+		hide()
+
+func _update_focus_connections():
+	if _anchor_node:
+		if show_on_focus:
+			_connect_focus_signals()
+		else:
+			_disconnect_anchor_signals()
+			_is_focused = false
+			if not _is_hovering and visible:
+				hide()
 
 func _get_tooltip_size() -> Vector2:
 	if m3_tooltip_variant == Variant.PLAIN:

@@ -36,7 +36,7 @@ func _ready():
 	size_slider.value = IconsFonts.preview_size
 
 	for renderer: IconsFontsRender in icons_renderers:
-		renderer.tooltip_text = tooltip
+		renderer.tooltip_text = ""
 
 func setup():
 	# Wait for fonts to be loaded before rendering
@@ -47,6 +47,8 @@ func setup():
 		if !renderer.is_node_ready(): await ready
 		renderer.setup()
 		renderer.meta_clicked.connect(_on_meta)
+		renderer.meta_hover_started.connect(_on_meta_hover_started.bind(renderer))
+		renderer.meta_hover_ended.connect(_on_meta_hover_ended.bind(renderer))
 		renderer.update_table("")
 	icons_renderer = icons_renderers[0]
 	
@@ -68,7 +70,8 @@ func update_table(filter := ""):
 	if not icons_renderer: return
 	icons_renderer.update_table(filter)
 
-func _on_meta(link: String):
+func _on_meta(meta: Variant):
+	var link := str(meta)
 	DisplayServer.clipboard_set(link)
 	notify_label.text = "Copied to Clipboard: " + link
 	notify_label.show()
@@ -84,3 +87,9 @@ func _on_meta(link: String):
 	)
 	await t.finished
 	notify_label.hide()
+
+func _on_meta_hover_started(meta: Variant, renderer: IconsFontsRender):
+	renderer.tooltip_text = str(meta)
+
+func _on_meta_hover_ended(meta: Variant, renderer: IconsFontsRender):
+	renderer.tooltip_text = ""
