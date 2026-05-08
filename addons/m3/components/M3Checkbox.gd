@@ -1,0 +1,243 @@
+@tool
+class_name M3Checkbox
+extends CheckBox
+
+## Material 3 Checkbox Component
+## Custom-drawn checkbox with precise M3 spec compliance.
+## Supports checked, unchecked, and indeterminate states.
+
+# ============================================
+# SIZE SPECS (all values in dp)
+# ============================================
+
+const BOX_SIZE := 18.0
+const CORNER_RADIUS := 2.0
+const BORDER_WIDTH := 2.0
+const CHECK_STROKE := 2.0
+const TOUCH_TARGET := 40.0
+
+# ============================================
+# EXPORTS
+# ============================================
+
+@export var indeterminate: bool = false:
+	set(value):
+		if value == indeterminate:
+			return
+		indeterminate = value
+		queue_redraw()
+
+@export var error: bool = false:
+	set(value):
+		if value == error:
+			return
+		error = value
+		queue_redraw()
+
+@export var m3_tooltip_text: String = "":
+	set(value):
+		if value == m3_tooltip_text:
+			return
+		m3_tooltip_text = value
+		if _tooltip:
+			_tooltip.m3_tooltip_text = value
+
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
+	set(value):
+		if value == m3_tooltip_variant:
+			return
+		m3_tooltip_variant = value
+		if _tooltip:
+			_tooltip.m3_tooltip_variant = value
+
+# ============================================
+# INTERNAL
+# ============================================
+
+var _hovered: bool = false
+var _pressed: bool = false
+var _tooltip: M3Tooltip
+
+# ============================================
+# LIFECYCLE
+# ============================================
+
+func _enter_tree():
+	# Hide native CheckBox visuals
+	flat = true
+	
+	var empty_img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	empty_img.fill(Color.TRANSPARENT)
+	var empty_tex := ImageTexture.create_from_image(empty_img)
+	
+	for icon in ["checked", "unchecked", "checked_disabled", "unchecked_disabled"]:
+		add_theme_icon_override(icon, empty_tex)
+	
+	add_theme_color_override("icon_normal_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_pressed_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_hover_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_hover_pressed_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_disabled_color", Color.TRANSPARENT)
+	
+	# Style label text
+	add_theme_font_size_override("font_size", M3Units.dp(14))
+
+func _ready():
+	clip_contents = false
+	
+	# Set minimum size to touch target
+	var touch_px = M3Units.dp(TOUCH_TARGET)
+	custom_minimum_size = Vector2(touch_px, touch_px)
+	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	
+	# Connect signals
+	button_down.connect(func(): _pressed = true; queue_redraw())
+	button_up.connect(func(): _pressed = false; queue_redraw())
+	toggled.connect(func(_v): queue_redraw())
+	mouse_entered.connect(func(): _hovered = true; queue_redraw())
+	mouse_exited.connect(func(): _hovered = false; queue_redraw())
+	
+	_setup_tooltip()
+
+func _setup_tooltip():
+	if m3_tooltip_text.is_empty():
+		return
+	_tooltip = M3Tooltip.new()
+	_tooltip.m3_tooltip_text = m3_tooltip_text
+	_tooltip.m3_tooltip_variant = m3_tooltip_variant
+	add_child(_tooltip)
+	mouse_entered.connect(_tooltip.show_for.bind(self))
+	mouse_exited.connect(_tooltip.hide_tooltip)
+
+# ============================================
+# DRAW
+# ============================================
+
+
+
+func _draw():
+	var is_checked = button_pressed
+	var is_disabled = disabled
+	
+	# Calculate box rect (centered in touch target area on the left)
+	var box_size_px = M3Units.dp(BOX_SIZE)
+	var box_pos = Vector2(
+		M3Units.dp((TOUCH_TARGET - BOX_SIZE) / 2.0),
+		(size.y - box_size_px) / 2.0
+	)
+	var box_rect = Rect2(box_pos, Vector2(box_size_px, box_size_px))
+	
+	var box_center = box_rect.position + box_rect.size / 2.0
+	
+	# Draw hover/pressed overlay (40dp circle behind everything)
+	if _hovered and not is_disabled:
+		_draw_state_overlay(box_center, is_checked)
+	
+	# Draw focus ring if focused (40dp circle outline)
+	if has_focus() and not is_disabled:
+		_draw_focus_ring(box_center)
+	
+	# Draw box background and border
+	_draw_box(box_rect, is_checked, is_disabled)
+	
+	# Draw checkmark or indeterminate line
+	if is_checked:
+		if indeterminate:
+			_draw_indeterminate(box_rect, is_disabled)
+		else:
+			_draw_checkmark(box_rect, is_disabled)
+
+func _draw_box(rect: Rect2, is_checked: bool, is_disabled: bool):
+	var sb = StyleBoxFlat.new()
+	sb.set_corner_radius_all(M3Units.dpi(CORNER_RADIUS))
+	sb.anti_aliasing = true
+	sb.anti_aliasing_size = 1.0
+	
+	var alpha = 0.38 if is_disabled else 1.0
+	
+	if is_checked:
+		# Filled box
+		var fill_color: Color
+		if error:
+			fill_color = M3Theme.get_error()
+		else:
+			fill_color = M3Theme.get_primary()
+		sb.bg_color = Color(fill_color.r, fill_color.g, fill_color.b, fill_color.a * alpha)
+		sb.set_border_width_all(0)
+	else:
+		# Outlined box
+		var border_color: Color
+		if error:
+			border_color = M3Theme.get_error()
+		else:
+			border_color = M3Theme.get_outline()
+		sb.bg_color = Color.TRANSPARENT
+		sb.border_color = Color(border_color.r, border_color.g, border_color.b, border_color.a * alpha)
+		sb.set_border_width_all(M3Units.dp(BORDER_WIDTH))
+	
+	draw_style_box(sb, rect)
+
+func _draw_checkmark(rect: Rect2, is_disabled: bool):
+	var check_color = M3Theme.get_on_primary()
+	if error:
+		check_color = M3Theme.get_on_error()
+	
+	var alpha = 0.38 if is_disabled else 1.0
+	var color = Color(check_color.r, check_color.g, check_color.b, check_color.a * alpha)
+	var stroke = M3Units.dp(CHECK_STROKE)
+	
+	# Checkmark points within the box
+	var p1 = rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.55)
+	var p2 = rect.position + Vector2(rect.size.x * 0.42, rect.size.y * 0.72)
+	var p3 = rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.28)
+	
+	draw_line(p1, p2, color, stroke, true)
+	draw_line(p2, p3, color, stroke, true)
+
+func _draw_indeterminate(rect: Rect2, is_disabled: bool):
+	var line_color = M3Theme.get_on_primary()
+	if error:
+		line_color = M3Theme.get_on_error()
+	
+	var alpha = 0.38 if is_disabled else 1.0
+	var color = Color(line_color.r, line_color.g, line_color.b, line_color.a * alpha)
+	var stroke = M3Units.dp(CHECK_STROKE)
+	
+	var start = rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.5)
+	var end = rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.5)
+	
+	draw_line(start, end, color, stroke, true)
+
+func _draw_focus_ring(center: Vector2):
+	var radius = M3Units.dp(TOUCH_TARGET) / 2.0
+	var color = M3Theme.get_on_surface()
+	draw_arc(center, radius, 0, TAU, 64, color, M3Units.dp(1), true)
+
+func _draw_state_overlay(center: Vector2, is_checked: bool):
+	var radius = M3Units.dp(TOUCH_TARGET) / 2.0
+	
+	# M3 spec: hover overlay uses on-surface color at state layer opacity
+	var overlay_color = M3Theme.get_on_surface()
+	var opacity: float
+	if _pressed:
+		opacity = 0.12
+	else:
+		opacity = 0.08
+	var color = Color(overlay_color.r, overlay_color.g, overlay_color.b, opacity)
+	
+	# Use StyleBoxFlat for better anti-aliased circle rendering
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.set_corner_radius_all(int(radius))
+	sb.anti_aliasing = true
+	sb.anti_aliasing_size = 1.0
+	var rect = Rect2(center - Vector2(radius, radius), Vector2(radius * 2, radius * 2))
+	draw_style_box(sb, rect)
+
+# ============================================
+# PUBLIC
+# ============================================
+
+func refresh_theme():
+	queue_redraw()

@@ -154,6 +154,15 @@ static func get_surface_container() -> Color:
 static func get_error() -> Color:
 	return ERROR_DARK if is_dark_mode else ERROR_LIGHT
 
+static func get_on_error() -> Color:
+	return ON_ERROR_DARK if is_dark_mode else ON_ERROR_LIGHT
+
+static func get_error_container() -> Color:
+	return ERROR_CONTAINER_DARK if is_dark_mode else ERROR_CONTAINER_LIGHT
+
+static func get_on_error_container() -> Color:
+	return ON_ERROR_CONTAINER_DARK if is_dark_mode else ON_ERROR_CONTAINER_LIGHT
+
 static func get_surface() -> Color:
 	return SURFACE_DARK if is_dark_mode else SURFACE_LIGHT
 

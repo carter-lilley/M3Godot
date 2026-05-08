@@ -63,22 +63,36 @@ var _tooltip: M3Tooltip
 # LIFECYCLE
 # ============================================
 
-func _ready():
-	# Hide native CheckButton visuals
-	add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
-	add_theme_stylebox_override("hover", StyleBoxEmpty.new())
-	add_theme_stylebox_override("disabled", StyleBoxEmpty.new())
-	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	add_theme_icon_override("checked", PlaceholderTexture2D.new())
-	add_theme_icon_override("unchecked", PlaceholderTexture2D.new())
-	add_theme_icon_override("checked_disabled", PlaceholderTexture2D.new())
-	add_theme_icon_override("unchecked_disabled", PlaceholderTexture2D.new())
+func _enter_tree():
+	# Completely disable native Button/CheckButton drawing
+	flat = true
 	
-	# Set fixed size
+	# Hide native CheckButton visuals
+	for style in ["normal", "pressed", "hover", "disabled", "focus", "hover_pressed", "normal_mirrored", "pressed_mirrored", "hover_mirrored", "disabled_mirrored", "focus_mirrored", "hover_pressed_mirrored"]:
+		add_theme_stylebox_override(style, StyleBoxEmpty.new())
+	
+	# Hide native CheckButton icons completely
+	var empty_img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	empty_img.fill(Color.TRANSPARENT)
+	var empty_tex := ImageTexture.create_from_image(empty_img)
+	
+	for icon in ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored"]:
+		add_theme_icon_override(icon, empty_tex)
+	
+	# Also hide icon colors
+	add_theme_color_override("icon_normal_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_pressed_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_hover_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_hover_pressed_color", Color.TRANSPARENT)
+	add_theme_color_override("icon_disabled_color", Color.TRANSPARENT)
+
+func _ready():
+	# Set fixed size - never expand in containers
 	var track_width_px = M3Units.dp(TRACK_WIDTH)
 	var track_height_px = M3Units.dp(TRACK_HEIGHT)
 	custom_minimum_size = Vector2(track_width_px, track_height_px)
+	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	# Track press state for visual sizing
 	button_down.connect(func(): _is_pressing = true; queue_redraw())
@@ -88,6 +102,9 @@ func _ready():
 	_initialize_styleboxes()
 	_initialize_icon()
 	_setup_tooltip()
+
+func _get_minimum_size() -> Vector2:
+	return Vector2(M3Units.dp(TRACK_WIDTH), M3Units.dp(TRACK_HEIGHT))
 
 func _setup_tooltip():
 	if m3_tooltip_text.is_empty():
@@ -163,7 +180,9 @@ func _notification(what: int):
 			queue_redraw()
 
 func _draw():
-	var track_rect = Rect2(Vector2.ZERO, size)
+	var track_width_px = M3Units.dp(TRACK_WIDTH)
+	var track_height_px = M3Units.dp(TRACK_HEIGHT)
+	var track_rect = Rect2(Vector2((size.x - track_width_px) / 2.0, (size.y - track_height_px) / 2.0), Vector2(track_width_px, track_height_px))
 	var is_on = button_pressed
 	var is_disabled = disabled
 	
