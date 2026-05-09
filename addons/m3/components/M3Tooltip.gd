@@ -378,14 +378,23 @@ func _get_tooltip_size() -> Vector2:
 		var pad_v = M3Units.dp(PLAIN_PADDING_V)
 		var max_w = M3Units.dp(PLAIN_MAX_WIDTH)
 		
-		# Single measurement: constrain width and let Label compute wrapped min size.
-		# With AUTOWRAP_WORD_SMART, get_minimum_size() respects the current size.x
-		# as the wrapping width. For short text, x is the unwrapped width.
-		_label.size.x = max_w - pad_h * 2
-		var text_size = _label.get_minimum_size()
+		var old_size = _label.size
+		var old_autowrap = _label.autowrap_mode
 		
-		var width = min(text_size.x + pad_h * 2, max_w)
-		var height = max(text_size.y + pad_v * 2, M3Units.dp(24))
+		# Measure unwrapped width for sizing
+		_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		var unwrapped_size = _label.get_minimum_size()
+		
+		# Measure wrapped height at max width
+		_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_label.size.x = max_w - pad_h * 2
+		var wrapped_size = _label.get_minimum_size()
+		
+		_label.size = old_size
+		_label.autowrap_mode = old_autowrap
+		
+		var width = min(unwrapped_size.x + pad_h * 2, max_w)
+		var height = max(wrapped_size.y + pad_v * 2, M3Units.dp(24))
 		
 		return Vector2(width, height)
 	else:

@@ -70,15 +70,28 @@ func _enter_tree():
 	# Hide native CheckBox visuals
 	flat = true
 	M3Theme.hide_native_check_icons(self)
+	
+	# Text styling - use on_surface for proper contrast
+	var fonts = M3Theme.load_fonts()
+	add_theme_font_override("font", fonts["regular"])
 	add_theme_font_size_override("font_size", M3Units.dp(14))
+	add_theme_color_override("font_color", M3Theme.get_on_surface())
+	add_theme_color_override("font_pressed_color", M3Theme.get_on_surface())
+	add_theme_color_override("font_hover_color", M3Theme.get_on_surface())
+	add_theme_color_override("font_hover_pressed_color", M3Theme.get_on_surface())
+	add_theme_color_override("font_focus_color", M3Theme.get_on_surface())
+	add_theme_color_override("font_disabled_color", M3Theme.disabled_color(M3Theme.get_on_surface()))
+	
+	# Push text to the right of our custom checkbox (40dp touch target)
+	add_theme_constant_override("h_separation", M3Units.dp(TOUCH_TARGET))
 
 func _ready():
 	clip_contents = false
 	
-	# Set minimum size to touch target
+	# Minimum height is touch target, but let width expand for text
 	var touch_px = M3Units.dp(TOUCH_TARGET)
-	custom_minimum_size = Vector2(touch_px, touch_px)
-	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	custom_minimum_size = Vector2(0, touch_px)
+	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	# Connect signals

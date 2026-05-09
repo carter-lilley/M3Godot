@@ -68,6 +68,43 @@ func _ready():
 	var snackbar_btn = $MarginContainer/ScrollContainer/VBoxContainer/SnackbarTestButton
 	if snackbar_btn:
 		snackbar_btn.pressed.connect(_on_snackbar_test_pressed)
+	
+	# Create dialog test buttons
+	var dialog_section = VBoxContainer.new()
+	dialog_section.name = "DialogTests"
+	
+	var dialog_label = Label.new()
+	dialog_label.text = "M3 Dialogs"
+	dialog_section.add_child(dialog_label)
+	
+	var dialog_btn_row = HBoxContainer.new()
+	dialog_btn_row.add_theme_constant_override("separation", 8)
+	
+	var basic_btn = _create_test_button("Show Basic Dialog", _on_dialog_basic_test_pressed)
+	var confirm_btn = _create_test_button("Show Confirm", _on_dialog_confirm_test_pressed)
+	var alert_btn = _create_test_button("Show Alert", _on_dialog_alert_test_pressed)
+	var fullscreen_btn = _create_test_button("Show Fullscreen", _on_dialog_fullscreen_test_pressed)
+	
+	dialog_btn_row.add_child(basic_btn)
+	dialog_btn_row.add_child(confirm_btn)
+	dialog_btn_row.add_child(alert_btn)
+	dialog_btn_row.add_child(fullscreen_btn)
+	
+	dialog_section.add_child(dialog_btn_row)
+	
+	# Add to container after snackbar button
+	if snackbar_btn:
+		var idx = snackbar_btn.get_index() + 1
+		$MarginContainer/ScrollContainer/VBoxContainer.add_child(dialog_section)
+		$MarginContainer/ScrollContainer/VBoxContainer.move_child(dialog_section, idx)
+	else:
+		$MarginContainer/ScrollContainer/VBoxContainer.add_child(dialog_section)
+
+func _create_test_button(text: String, callback: Callable) -> Button:
+	var btn = Button.new()
+	btn.text = text
+	btn.pressed.connect(callback)
+	return btn
 
 func _on_snackbar_test_pressed():
 	M3Snackbar.show_message(
@@ -76,6 +113,50 @@ func _on_snackbar_test_pressed():
 		func(): print("Undo clicked!"),
 		true
 	)
+
+func _on_dialog_basic_test_pressed():
+	var dialog = M3Dialog.new()
+	dialog.title_text = "Reset settings?"
+	dialog.body_text = "This will reset your app preferences back to their default settings."
+	dialog.hero_icon_name = "settings_backup_restore"
+	dialog.add_action("Cancel", Callable(), false)
+	dialog.add_action("Accept", func(): print("Accept clicked!"), true)
+	M3DialogCaller.show_dialog(dialog)
+
+func _on_dialog_confirm_test_pressed():
+	M3DialogCaller.show_confirm(
+		"Delete account?",
+		"This action cannot be undone. All your data will be permanently removed.",
+		func(): print("Account deleted!"),
+		func(): print("Cancelled")
+	)
+
+func _on_dialog_alert_test_pressed():
+	M3DialogCaller.show_alert(
+		"Update complete",
+		"Your app has been updated to the latest version.",
+		func(): print("OK clicked")
+	)
+
+func _on_dialog_fullscreen_test_pressed():
+	var dialog = M3Dialog.new()
+	dialog.dialog_variant = M3Dialog.Variant.FULL_SCREEN
+	dialog.title_text = "Settings"
+	dialog.body_text = "Configure your app preferences below."
+	dialog.hero_icon_name = "settings"
+	
+	# Add some sample content
+	var checkbox = M3Checkbox.new()
+	checkbox.text = "Enable notifications"
+	dialog.content_slot.add_child(checkbox)
+	
+	var checkbox2 = M3Checkbox.new()
+	checkbox2.text = "Dark mode"
+	dialog.content_slot.add_child(checkbox2)
+	
+	dialog.add_action("Cancel", Callable(), false)
+	dialog.add_action("Save", func(): print("Saved!"), true)
+	M3DialogCaller.show_dialog(dialog)
 
 func _on_dark_mode_toggled(pressed: bool):
 	dark_mode = pressed
