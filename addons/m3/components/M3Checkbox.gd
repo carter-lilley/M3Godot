@@ -228,9 +228,10 @@ func _draw_state_overlay(center: Vector2, is_checked: bool):
 # ============================================
 
 func get_tooltip_anchor_rect() -> Rect2:
-	# Return full touch target rect for tooltip positioning
-	# This gives proper spacing above the checkbox
-	return Rect2(Vector2.ZERO, size)
+	# Return only the touch target area (40dp box), not the full expanded width
+	# The checkbox box itself is the visual anchor for the tooltip
+	var touch_px = M3Units.dp(TOUCH_TARGET)
+	return Rect2(Vector2.ZERO, Vector2(touch_px, touch_px))
 
 func refresh_theme():
 	queue_redraw()

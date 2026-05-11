@@ -2,6 +2,11 @@ extends Control
 
 const CONTENT_PADDING := 20.0
 
+const M3Menu = preload("res://addons/m3/components/M3Menu.gd")
+const M3MenuRenderer = preload("res://addons/m3/components/M3MenuRenderer.gd")
+
+var _menu_test_buttons: Array[Button] = []
+
 @export var dark_mode: bool = false:
 	set(value):
 		dark_mode = value
@@ -99,6 +104,36 @@ func _ready():
 		$MarginContainer/ScrollContainer/VBoxContainer.move_child(dialog_section, idx)
 	else:
 		$MarginContainer/ScrollContainer/VBoxContainer.add_child(dialog_section)
+	
+	# Create menu test section
+	var menu_section = VBoxContainer.new()
+	menu_section.name = "MenuTests"
+	
+	var menu_label = Label.new()
+	menu_label.text = "M3 Menus"
+	menu_section.add_child(menu_label)
+	
+	var menu_btn_row = HBoxContainer.new()
+	menu_btn_row.add_theme_constant_override("separation", 8)
+	
+	var standard_menu_btn = _create_test_button("Show Standard Menu", _on_standard_menu_test_pressed)
+	var vibrant_menu_btn = _create_test_button("Show Vibrant Menu", _on_vibrant_menu_test_pressed)
+	var checkable_menu_btn = _create_test_button("Show Checkable Menu", _on_checkable_menu_test_pressed)
+	var twoline_menu_btn = _create_test_button("Show Two-Line Menu", _on_twoline_menu_test_pressed)
+	
+	menu_btn_row.add_child(standard_menu_btn)
+	menu_btn_row.add_child(vibrant_menu_btn)
+	menu_btn_row.add_child(checkable_menu_btn)
+	menu_btn_row.add_child(twoline_menu_btn)
+	
+	_menu_test_buttons = [standard_menu_btn, vibrant_menu_btn, checkable_menu_btn, twoline_menu_btn]
+	
+	menu_section.add_child(menu_btn_row)
+	
+	# Add after dialog section
+	var dialog_idx = dialog_section.get_index()
+	$MarginContainer/ScrollContainer/VBoxContainer.add_child(menu_section)
+	$MarginContainer/ScrollContainer/VBoxContainer.move_child(menu_section, dialog_idx + 1)
 
 func _create_test_button(text: String, callback: Callable) -> Button:
 	var btn = Button.new()
@@ -137,6 +172,42 @@ func _on_dialog_alert_test_pressed():
 		"Your app has been updated to the latest version.",
 		func(): print("OK clicked")
 	)
+
+func _on_standard_menu_test_pressed():
+	var menu = M3Menu.new()
+	menu.add_item("Preview", func(): print("Preview"), "visibility")
+	menu.add_item("Share", func(): print("Share"), "share")
+	menu.add_separator()
+	menu.add_item("Get link", func(): print("Get link"), "link")
+	menu.add_item("Remove", func(): print("Remove"), "delete", "chevron-right")
+	menu.popup(_menu_test_buttons[0])
+
+func _on_vibrant_menu_test_pressed():
+	var menu = M3Menu.new()
+	menu.menu_variant = M3MenuRenderer.ColorVariant.VIBRANT
+	menu.add_item("Preview", func(): print("Preview"), "visibility")
+	menu.add_item("Share", func(): print("Share"), "share")
+	menu.add_separator()
+	menu.add_item("Get link", func(): print("Get link"), "link")
+	menu.add_item("Remove", func(): print("Remove"), "delete")
+	menu.popup(_menu_test_buttons[1])
+
+func _on_checkable_menu_test_pressed():
+	var menu = M3Menu.new()
+	menu.add_check_item("Show bounding box", false, func(): print("Toggle bounding box"))
+	menu.add_check_item("Show grid", true, func(): print("Toggle grid"))
+	menu.add_separator()
+	menu.add_section_label("View options")
+	menu.add_check_item("Night mode", false, func(): print("Toggle night mode"))
+	menu.popup(_menu_test_buttons[2])
+
+func _on_twoline_menu_test_pressed():
+	var menu = M3Menu.new()
+	menu.add_two_line_item("Headline", "Supporting text", func(): print("Headline"), "article")
+	menu.add_two_line_item("List item", "Secondary text", func(): print("List item"), "list")
+	menu.add_separator()
+	menu.add_item("Simple item", func(): print("Simple"))
+	menu.popup(_menu_test_buttons[3])
 
 func _on_dialog_fullscreen_test_pressed():
 	var dialog = M3Dialog.new()

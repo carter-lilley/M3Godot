@@ -30,6 +30,16 @@ const ON_SECONDARY_DARK := Color("#332D41")
 const SECONDARY_CONTAINER_DARK := Color("#4A4458")
 const ON_SECONDARY_CONTAINER_DARK := Color("#E8DEF8")
 
+const TERTIARY_LIGHT := Color("#7D5260")
+const ON_TERTIARY_LIGHT := Color("#FFFFFF")
+const TERTIARY_CONTAINER_LIGHT := Color("#FFD8E4")
+const ON_TERTIARY_CONTAINER_LIGHT := Color("#31111D")
+
+const TERTIARY_DARK := Color("#EFB8C8")
+const ON_TERTIARY_DARK := Color("#31111D")
+const TERTIARY_CONTAINER_DARK := Color("#633B48")
+const ON_TERTIARY_CONTAINER_DARK := Color("#FFD8E4")
+
 const ERROR_LIGHT := Color("#B3261E")
 const ON_ERROR_LIGHT := Color("#FFFFFF")
 const ERROR_CONTAINER_LIGHT := Color("#F9DEDC")
@@ -144,6 +154,18 @@ static func get_secondary_container() -> Color:
 
 static func get_on_secondary_container() -> Color:
 	return ON_SECONDARY_CONTAINER_DARK if is_dark_mode else ON_SECONDARY_CONTAINER_LIGHT
+
+static func get_tertiary() -> Color:
+	return TERTIARY_DARK if is_dark_mode else TERTIARY_LIGHT
+
+static func get_on_tertiary() -> Color:
+	return ON_TERTIARY_DARK if is_dark_mode else ON_TERTIARY_LIGHT
+
+static func get_tertiary_container() -> Color:
+	return TERTIARY_CONTAINER_DARK if is_dark_mode else TERTIARY_CONTAINER_LIGHT
+
+static func get_on_tertiary_container() -> Color:
+	return ON_TERTIARY_CONTAINER_DARK if is_dark_mode else ON_TERTIARY_CONTAINER_LIGHT
 
 static func get_surface_container_low() -> Color:
 	return get_elevation_surface(1)
