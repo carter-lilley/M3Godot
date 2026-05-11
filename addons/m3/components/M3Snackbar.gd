@@ -1,51 +1,10 @@
 class_name M3Snackbar
-extends CanvasLayer
+extends M3Overlay
 
 ## Material 3 Snackbar Component
 ## Transient notification shown at the bottom of the screen.
-## Extends CanvasLayer for overlay rendering without a separate manager.
 
 const M3Units = preload("res://addons/m3/M3Units.gd")
-
-# ============================================
-# STATIC INSTANCE
-# ============================================
-
-static var _current_snackbar: M3Snackbar = null
-
-## Show a snackbar with message and optional action.
-## Dismisses current snackbar if one is showing.
-static func show_message(message: String, action_text: String = "", action_callback: Callable = Callable(), dismissible: bool = true):
-	# Dismiss current if showing
-	if _current_snackbar != null and is_instance_valid(_current_snackbar):
-		_current_snackbar.dismiss()
-	
-	# Create new snackbar
-	var snackbar = M3Snackbar.new()
-	snackbar.setup(message, action_text, action_callback, dismissible)
-	
-	# Add to scene tree
-	var tree = Engine.get_main_loop()
-	if tree and tree.root:
-		tree.root.add_child(snackbar)
-		_current_snackbar = snackbar
-
-## Dismiss the currently showing snackbar.
-static func dismiss_current():
-	if _current_snackbar != null and is_instance_valid(_current_snackbar):
-		_current_snackbar.dismiss()
-		_current_snackbar = null
-
-## Check if a snackbar is currently showing.
-static func is_showing() -> bool:
-	return _current_snackbar != null and is_instance_valid(_current_snackbar)
-
-# ============================================
-# SIGNALS
-# ============================================
-
-signal action_pressed
-signal dismissed
 
 # ============================================
 # SIZE SPECS
@@ -57,6 +16,12 @@ const MOBILE_MARGIN := 8.0
 const CORNER_RADIUS := 4.0
 const LEFT_PADDING := 16.0
 const RIGHT_PADDING := 8.0
+
+# ============================================
+# SIGNALS
+# ============================================
+
+signal action_pressed
 
 # ============================================
 # INTERNAL
@@ -79,36 +44,33 @@ var dismissible: bool = true
 # ============================================
 
 func _init():
-	layer = 100
+	super._init()
+	overlay_type = "snackbar"
+	overlay_layer = 100
 	_create_visuals()
 
 func _ready():
+	super._ready()
 	_position_snackbar()
 	_setup_timer()
 	_update_appearance()
 	start_timer(4000)
 	
-	# Connect input signals to container (Control has mouse signals)
 	_container.mouse_entered.connect(_on_mouse_entered)
 	_container.mouse_exited.connect(_on_mouse_exited)
-	
-	# Update position on viewport resize
 	get_viewport().size_changed.connect(_on_viewport_resized)
 
 func _create_visuals():
-	# Background panel
 	_container = Panel.new()
 	_container.mouse_filter = Control.MOUSE_FILTER_PASS
 	add_child(_container)
 	
-	# Horizontal layout
 	_hbox = HBoxContainer.new()
 	_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	_hbox.mouse_filter = Control.MOUSE_FILTER_PASS
 	_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_container.add_child(_hbox)
 	
-	# Message label
 	_message_label = Label.new()
 	_message_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -117,7 +79,6 @@ func _create_visuals():
 	_message_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	_hbox.add_child(_message_label)
 	
-	# Action button wrapped in CenterContainer for proper vertical centering
 	var action_center = CenterContainer.new()
 	action_center.size_flags_horizontal = Control.SIZE_SHRINK_END
 	action_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -129,7 +90,6 @@ func _create_visuals():
 	_action_button.pressed.connect(_on_action_pressed)
 	action_center.add_child(_action_button)
 	
-	# Dismiss button wrapped in CenterContainer
 	var dismiss_center = CenterContainer.new()
 	dismiss_center.size_flags_horizontal = Control.SIZE_SHRINK_END
 	dismiss_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -152,16 +112,12 @@ func _position_snackbar():
 	var max_width = M3Units.dp(MAX_WIDTH)
 	var height = M3Units.dp(SNACKBAR_HEIGHT)
 	
-	# Calculate width
 	var width: float
 	if viewport_size.x <= M3Units.dp(600):
-		# Mobile: full width minus margins
 		width = viewport_size.x - margin * 2
 	else:
-		# Desktop/tablet: max 400dp, centered
 		width = min(viewport_size.x - margin * 2, max_width)
 	
-	# Position at bottom center
 	_container.size = Vector2(width, height)
 	_container.position = Vector2(
 		(viewport_size.x - width) / 2.0,
@@ -171,34 +127,27 @@ func _position_snackbar():
 func _update_appearance():
 	var fonts = M3Theme.load_fonts()
 	
-	# Background with shadow
 	var bg = M3Theme.get_inverse_surface()
 	var sb = M3Theme.make_shadow(bg, M3Units.dpi(CORNER_RADIUS), 6, Vector2(0, 3), Color(0, 0, 0, 0.20))
 	_container.add_theme_stylebox_override("panel", sb)
 	
-	# Message text
 	_message_label.add_theme_color_override("font_color", M3Theme.get_inverse_on_surface())
 	_message_label.add_theme_font_override("font", fonts["medium"])
 	_message_label.add_theme_font_size_override("font_size", M3Units.dp(14))
 	
-	# Action button colors (primary on inverse surface)
 	_action_button.add_theme_color_override("font_color", M3Theme.get_primary())
 	_action_button.add_theme_color_override("font_pressed_color", M3Theme.get_primary())
 	_action_button.add_theme_color_override("font_hover_color", M3Theme.get_primary())
 	
-	# Dismiss button colors (inverse_on_surface, semi-transparent)
 	var dismiss_color = M3Theme.get_inverse_on_surface()
 	_dismiss_button.add_theme_color_override("font_color", Color(dismiss_color.r, dismiss_color.g, dismiss_color.b, 0.6))
 	_dismiss_button.add_theme_color_override("font_hover_color", dismiss_color)
 	
-	# Update layout
 	_update_layout()
 
 func _update_layout():
 	var h_padding = M3Units.dp(LEFT_PADDING)
 	var right_padding = M3Units.dp(RIGHT_PADDING)
-	
-	# Position hbox with padding
 	_hbox.position = Vector2(h_padding, 0)
 	_hbox.size = Vector2(_container.size.x - h_padding - right_padding, _container.size.y)
 
@@ -234,12 +183,7 @@ func _on_dismiss_pressed():
 
 func dismiss():
 	_timer.stop()
-	
-	if _current_snackbar == self:
-		_current_snackbar = null
-	
-	dismissed.emit()
-	queue_free()
+	super.dismiss()
 
 # ============================================
 # INPUT
@@ -260,6 +204,18 @@ func _on_viewport_resized():
 # ============================================
 # PUBLIC
 # ============================================
+
+static func show_message(message: String, action_text: String = "", action_callback: Callable = Callable(), dismissible: bool = true):
+	var snackbar = M3Snackbar.new()
+	snackbar.setup(message, action_text, action_callback, dismissible)
+	
+	var tree = Engine.get_main_loop()
+	if tree and tree.root:
+		tree.root.add_child(snackbar)
+		snackbar.show_overlay()
+
+static func dismiss_current():
+	M3Overlay.dismiss_type("snackbar")
 
 func setup(msg: String, act_text: String = "", action_callback: Callable = Callable(), can_dismiss: bool = true):
 	message = msg

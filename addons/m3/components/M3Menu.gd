@@ -1,20 +1,12 @@
 class_name M3Menu
-extends Node
+extends M3Overlay
 
 const M3MenuItem = preload("res://addons/m3/components/M3MenuItem.gd")
 const M3MenuRenderer = preload("res://addons/m3/components/M3MenuRenderer.gd")
 
 ## Material 3 Menu Component
-## Editor-friendly Node that builds and shows M3-styled popup menus.
-##
-## Usage:
-##   var menu = M3Menu.new()
-##   menu.add_item("Open", func(): print("open"))
-##   menu.add_check_item("Show preview", true)
-##   menu.add_separator()
-##   menu.popup(anchor_control)
-##
-## Or configure in the editor with exported items (when supported).
+## Extends M3Overlay for consistent overlay behavior.
+## Builds and shows M3-styled popup menus.
 
 const M3Units = preload("res://addons/m3/M3Units.gd")
 
@@ -35,7 +27,14 @@ const M3Units = preload("res://addons/m3/M3Units.gd")
 var _items: Array[M3MenuItem] = []
 var _renderer: M3MenuRenderer = null
 
-static var _current_menu: M3Menu = null
+# ============================================
+# LIFECYCLE
+# ============================================
+
+func _init():
+	super._init()
+	overlay_type = "menu"
+	overlay_layer = 95
 
 # ============================================
 # BUILDER API
@@ -86,28 +85,26 @@ func popup(anchor: Control):
 	if _items.is_empty():
 		return
 	
-	# Dismiss any currently open menu
-	if _current_menu != null and _current_menu != self and is_instance_valid(_current_menu):
-		_current_menu.dismiss()
-	_current_menu = self
-	
-	# Must be in the scene tree for the renderer to receive input and have a viewport
-	if get_parent() == null and anchor != null and anchor.is_inside_tree():
-		anchor.add_child(self)
+	show_overlay()
 	
 	_ensure_renderer()
 	_renderer.popup(_items, anchor, menu_variant)
 	_renderer.item_pressed.connect(_on_item_pressed, CONNECT_ONE_SHOT)
 	_renderer.dismissed.connect(_on_renderer_dismissed, CONNECT_ONE_SHOT)
 
-## Dismiss the menu if open.
-func dismiss():
-	if _renderer and _renderer.is_open():
-		_renderer.dismiss()
-
 ## Check if the menu is currently open.
 func is_open() -> bool:
 	return _renderer != null and _renderer.is_open()
+
+# ============================================
+# OVERRIDES
+# ============================================
+
+func show_overlay():
+	var tree = Engine.get_main_loop()
+	if tree and tree.root and get_parent() == null:
+		tree.root.add_child(self)
+	super.show_overlay()
 
 # ============================================
 # PRIVATE
@@ -123,11 +120,6 @@ func _on_item_pressed(index: int):
 	pass
 
 func _on_renderer_dismissed():
-	# Clear static reference if this was the current menu
-	if _current_menu == self:
-		_current_menu = null
-	# Clean up menu and renderer after dismissal
-	if _renderer:
-		_renderer.queue_free()
-		_renderer = null
-	queue_free()
+	# Renderer dismissed itself (outside click or item selection)
+	# Use M3Overlay dismiss to clean up singleton registry
+	super.dismiss()

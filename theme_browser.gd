@@ -156,10 +156,10 @@ func _on_dialog_basic_test_pressed():
 	dialog.hero_icon_name = "settings_backup_restore"
 	dialog.add_action("Cancel", Callable(), false)
 	dialog.add_action("Accept", func(): print("Accept clicked!"), true)
-	M3DialogCaller.show_dialog(dialog)
+	M3Dialog.show_dialog(dialog)
 
 func _on_dialog_confirm_test_pressed():
-	M3DialogCaller.show_confirm(
+	M3Dialog.show_confirm(
 		"Delete account?",
 		"This action cannot be undone. All your data will be permanently removed.",
 		func(): print("Account deleted!"),
@@ -167,7 +167,7 @@ func _on_dialog_confirm_test_pressed():
 	)
 
 func _on_dialog_alert_test_pressed():
-	M3DialogCaller.show_alert(
+	M3Dialog.show_alert(
 		"Update complete",
 		"Your app has been updated to the latest version.",
 		func(): print("OK clicked")
@@ -227,7 +227,7 @@ func _on_dialog_fullscreen_test_pressed():
 	
 	dialog.add_action("Cancel", Callable(), false)
 	dialog.add_action("Save", func(): print("Saved!"), true)
-	M3DialogCaller.show_dialog(dialog)
+	M3Dialog.show_dialog(dialog)
 
 func _on_dark_mode_toggled(pressed: bool):
 	dark_mode = pressed

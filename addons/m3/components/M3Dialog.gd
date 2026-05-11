@@ -1,9 +1,9 @@
 @tool
 class_name M3Dialog
-extends PanelContainer
+extends M3Overlay
 
 ## Material 3 Dialog Component
-## Extends PanelContainer for modal overlay rendering within a CanvasLayer.
+## Extends M3Overlay for modal overlay rendering.
 ## Supports BASIC and FULL_SCREEN variants with hero icon, title, body,
 ## custom content slot, and action buttons.
 
@@ -65,12 +65,14 @@ const FULLSCREEN_ACTIONS_HEIGHT := 64.0
 # SIGNALS
 # ============================================
 
-signal dismissed
 signal action_pressed(action_label: String)
 
 # ============================================
 # INTERNAL
 # ============================================
+
+var _scrim: ColorRect
+var _dialog_container: PanelContainer
 
 var _vbox: VBoxContainer
 var _hero_icon: FontIcon
@@ -101,7 +103,6 @@ var content_slot: VBoxContainer:
 		return _content_slot
 
 ## Add an action button to the dialog.
-## Primary actions use the filled variant; secondary use text variant.
 func add_action(label: String, callback: Callable = Callable(), primary: bool = false):
 	var btn = M3Button.new()
 	btn.text = label
@@ -111,7 +112,6 @@ func add_action(label: String, callback: Callable = Callable(), primary: bool = 
 	if callback.is_valid():
 		btn.pressed.connect(callback)
 	_actions.append(btn)
-	# Only add to container if layout is ready; otherwise _ready() will add pending actions
 	if _actions_container:
 		_actions_container.add_child(btn)
 
@@ -121,55 +121,62 @@ func clear_actions():
 		btn.queue_free()
 	_actions.clear()
 
-## Dismiss the dialog programmatically.
-func dismiss():
-	dismissed.emit()
-	hide()
+## Show the dialog overlay.
+func show_overlay():
+	var tree = Engine.get_main_loop()
+	if tree and tree.root and get_parent() == null:
+		tree.root.add_child(self)
+	_position_dialog()
+	super.show_overlay()
 
 # ============================================
 # LIFECYCLE
 # ============================================
 
 func _init():
-	# Build layout immediately so content_slot and other nodes are available
-	# before the dialog is added to the scene tree
+	super._init()
+	overlay_type = "dialog"
+	overlay_layer = 90
 	_build_layout()
 
 func _ready():
+	super._ready()
 	_update_appearance()
 	_update_text()
 	_update_hero_icon()
 	
-	# Add any actions that were queued before _ready() (e.g. user called add_action() before adding to tree)
 	for btn in _actions:
 		if btn.get_parent() == null and _actions_container:
 			_actions_container.add_child(btn)
 	
 	_add_default_action()
-	
 	_ready_called = true
 
-func _unhandled_input(event: InputEvent):
-	if event.is_action_pressed("ui_cancel") and dismissible:
-		accept_event()
-		dismiss()
-
 func _build_layout():
+	# Scrim
+	_scrim = ColorRect.new()
+	_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_scrim.color = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, 0.32)
+	_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_scrim.gui_input.connect(_on_scrim_input)
+	add_child(_scrim)
+	
+	# Dialog container (PanelContainer)
+	_dialog_container = PanelContainer.new()
+	add_child(_dialog_container)
+	
 	if dialog_variant == Variant.BASIC:
 		_build_basic_layout()
 	else:
 		_build_fullscreen_layout()
 
 func _build_basic_layout():
-	# This PanelContainer is the root with M3 styling
-	# Vertical layout with explicit spacers for M3 spec spacing
 	_vbox = VBoxContainer.new()
 	_vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
-	add_child(_vbox)
+	_dialog_container.add_child(_vbox)
 	
 	_vbox.add_theme_constant_override("separation", 0)
 	
-	# Hero icon (optional, centered)
 	_hero_icon = FontIcon.new()
 	_hero_icon.icon_settings = FontIconSettings.new()
 	_hero_icon.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
@@ -178,69 +185,56 @@ func _build_basic_layout():
 	_hero_icon.visible = false
 	_vbox.add_child(_hero_icon)
 	
-	# Title (left-aligned per M3 spec)
 	_title_label = Label.new()
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_vbox.add_child(_title_label)
 	
-	# Spacer: 16dp between title and body
 	var title_body_spacer = Control.new()
 	title_body_spacer.custom_minimum_size = Vector2(0, M3Units.dp(16))
 	_vbox.add_child(title_body_spacer)
 	
-	# Body (left-aligned per M3 spec)
 	_body_label = Label.new()
 	_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_vbox.add_child(_body_label)
 	
-	# Spacer: 24dp between body and content/actions
 	var body_content_spacer = Control.new()
 	body_content_spacer.custom_minimum_size = Vector2(0, M3Units.dp(24))
 	body_content_spacer.name = "BodyContentSpacer"
 	_vbox.add_child(body_content_spacer)
 	
-	# Content slot
 	_content_slot = VBoxContainer.new()
 	_vbox.add_child(_content_slot)
 	
-	# Divider
 	_divider = HSeparator.new()
 	_divider.visible = false
 	_vbox.add_child(_divider)
 	
-	# Spacer before actions: only visible when divider is shown
 	var divider_actions_spacer = Control.new()
 	divider_actions_spacer.custom_minimum_size = Vector2(0, M3Units.dp(24))
 	divider_actions_spacer.visible = false
 	divider_actions_spacer.name = "DividerActionsSpacer"
 	_vbox.add_child(divider_actions_spacer)
 	
-	# Actions container
 	_actions_container = HBoxContainer.new()
 	_actions_container.alignment = BoxContainer.ALIGNMENT_END
 	_actions_container.add_theme_constant_override("separation", M3Units.dp(ACTIONS_GAP))
 	_vbox.add_child(_actions_container)
 	
-	# Set size constraints
 	var max_width = M3Units.dp(BASIC_MAX_WIDTH)
-	custom_minimum_size = Vector2(max_width, 0)
+	_dialog_container.custom_minimum_size = Vector2(max_width, 0)
 
 func _build_fullscreen_layout():
-	# Full viewport dialog
-	# Use a full-size background panel
 	var bg_panel = Panel.new()
 	bg_panel.name = "FullscreenBackground"
 	bg_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg_panel)
+	_dialog_container.add_child(bg_panel)
 	
-	# Main layout container on top
 	_fullscreen_root = VBoxContainer.new()
 	_fullscreen_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(_fullscreen_root)
+	_dialog_container.add_child(_fullscreen_root)
 	
-	# Top bar
 	_top_bar = Panel.new()
 	_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
 	_fullscreen_root.add_child(_top_bar)
@@ -260,13 +254,11 @@ func _build_fullscreen_layout():
 	_top_bar_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	top_hbox.add_child(_top_bar_title)
 	
-	# Scrollable content area
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_fullscreen_root.add_child(_scroll)
 	
-	# MarginContainer provides the 24dp padding around content
 	var scroll_margin = MarginContainer.new()
 	scroll_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -283,7 +275,6 @@ func _build_fullscreen_layout():
 	_scroll_content.add_theme_constant_override("separation", M3Units.dp(16))
 	scroll_margin.add_child(_scroll_content)
 	
-	# Hero icon
 	_hero_icon = FontIcon.new()
 	_hero_icon.icon_settings = FontIconSettings.new()
 	_hero_icon.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
@@ -292,23 +283,19 @@ func _build_fullscreen_layout():
 	_hero_icon.visible = false
 	_scroll_content.add_child(_hero_icon)
 	
-	# Title (left-aligned per M3 spec)
 	_title_label = Label.new()
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_scroll_content.add_child(_title_label)
 	
-	# Body (left-aligned per M3 spec)
 	_body_label = Label.new()
 	_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_scroll_content.add_child(_body_label)
 	
-	# Content slot
 	_content_slot = VBoxContainer.new()
 	_scroll_content.add_child(_content_slot)
 	
-	# Bottom actions
 	_bottom_actions = Panel.new()
 	_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_ACTIONS_HEIGHT))
 	_fullscreen_root.add_child(_bottom_actions)
@@ -319,12 +306,10 @@ func _build_fullscreen_layout():
 	_actions_container.add_theme_constant_override("separation", M3Units.dp(ACTIONS_GAP))
 	_bottom_actions.add_child(_actions_container)
 	
-	# Full viewport size
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dialog_container.set_anchors_preset(Control.PRESET_FULL_RECT)
 
 func _rebuild_layout():
-	# Clear existing children
-	for child in get_children():
+	for child in _dialog_container.get_children():
 		child.queue_free()
 	
 	_vbox = null
@@ -333,10 +318,12 @@ func _rebuild_layout():
 	_scroll = null
 	_scroll_content = null
 	_bottom_actions = null
-	
 	_actions.clear()
 	
-	_build_layout()
+	if dialog_variant == Variant.BASIC:
+		_build_basic_layout()
+	else:
+		_build_fullscreen_layout()
 	_update_appearance()
 	_update_text()
 	_update_hero_icon()
@@ -348,6 +335,34 @@ func _add_default_action():
 func _on_action_pressed(label: String):
 	action_pressed.emit(label)
 
+func _on_scrim_input(event: InputEvent):
+	if event is InputEventMouseButton and event.pressed:
+		if dismissible:
+			dismiss()
+
+func _position_dialog():
+	var viewport_size = get_viewport().get_visible_rect().size if get_viewport() else Vector2(1920, 1080)
+	
+	if dialog_variant == Variant.BASIC:
+		var max_width = M3Units.dp(BASIC_MAX_WIDTH)
+		var dialog_width = min(max_width, viewport_size.x - M3Units.dp(48))
+		var min_height = M3Units.dp(200)
+		
+		_dialog_container.anchor_left = 0.5
+		_dialog_container.anchor_top = 0.5
+		_dialog_container.anchor_right = 0.5
+		_dialog_container.anchor_bottom = 0.5
+		
+		_dialog_container.offset_left = -dialog_width / 2.0
+		_dialog_container.offset_top = -min_height / 2.0
+		_dialog_container.offset_right = dialog_width / 2.0
+		_dialog_container.offset_bottom = min_height / 2.0
+		
+		_dialog_container.custom_minimum_size = Vector2(dialog_width, min_height)
+	else:
+		_dialog_container.position = Vector2.ZERO
+		_dialog_container.size = viewport_size
+
 # ============================================
 # APPEARANCE
 # ============================================
@@ -356,7 +371,6 @@ func _update_appearance():
 	var fonts = M3Theme.load_fonts()
 	
 	if dialog_variant == Variant.BASIC:
-		# Panel styling with 24dp content margins (inner padding)
 		var bg = M3Theme.get_surface_container()
 		var sb = M3Theme.make_shadow(bg, M3Units.dpi(BASIC_RADIUS), 
 			M3Theme.ELEVATION_3["size"], M3Theme.ELEVATION_3["offset"], M3Theme.ELEVATION_3["color"])
@@ -365,32 +379,26 @@ func _update_appearance():
 		sb.content_margin_right = pad
 		sb.content_margin_top = pad
 		sb.content_margin_bottom = pad
-		add_theme_stylebox_override("panel", sb)
+		_dialog_container.add_theme_stylebox_override("panel", sb)
 		
-		# Title styling
 		_title_label.add_theme_font_override("font", fonts["regular"])
 		_title_label.add_theme_font_size_override("font_size", M3Units.dp(24))
 		_title_label.add_theme_color_override("font_color", M3Theme.get_on_surface())
 		
-		# Body styling
 		_body_label.add_theme_font_override("font", fonts["regular"])
 		_body_label.add_theme_font_size_override("font_size", M3Units.dp(14))
 		_body_label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
 		
-		# Divider
 		var div_style = StyleBoxLine.new()
 		div_style.color = M3Theme.get_outline()
 		div_style.thickness = 1
 		_divider.add_theme_stylebox_override("separator", div_style)
 		
-		# Hero icon color
 		if _hero_icon and _hero_icon.visible:
 			_hero_icon.icon_settings.icon_color = M3Theme.get_secondary()
 		
 	else:
-		# Full-screen styling
-		# Update background panel
-		for child in get_children():
+		for child in _dialog_container.get_children():
 			if child.name == "FullscreenBackground":
 				child.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
 				break
@@ -402,7 +410,6 @@ func _update_appearance():
 		
 		_bottom_actions.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
 		
-		# Title and body styling (same as basic)
 		_title_label.add_theme_font_override("font", fonts["regular"])
 		_title_label.add_theme_font_size_override("font_size", M3Units.dp(24))
 		_title_label.add_theme_color_override("font_color", M3Theme.get_on_surface())
@@ -411,7 +418,6 @@ func _update_appearance():
 		_body_label.add_theme_font_size_override("font_size", M3Units.dp(14))
 		_body_label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
 		
-		# Hero icon color
 		if _hero_icon and _hero_icon.visible:
 			_hero_icon.icon_settings.icon_color = M3Theme.get_secondary()
 
@@ -437,3 +443,33 @@ func _update_hero_icon():
 
 func refresh_theme():
 	_update_appearance()
+
+# ============================================
+# STATIC FACTORIES
+# ============================================
+
+static func show_dialog(dialog: M3Dialog):
+	var tree = Engine.get_main_loop()
+	if tree and tree.root:
+		tree.root.add_child(dialog)
+		dialog.show_overlay()
+
+static func show_confirm(title: String, body: String, on_accept: Callable = Callable(), on_cancel: Callable = Callable()) -> M3Dialog:
+	var dialog = M3Dialog.new()
+	dialog.title_text = title
+	dialog.body_text = body
+	dialog.add_action("Cancel", on_cancel, false)
+	dialog.add_action("Accept", on_accept, true)
+	show_dialog(dialog)
+	return dialog
+
+static func show_alert(title: String, body: String, on_ok: Callable = Callable()) -> M3Dialog:
+	var dialog = M3Dialog.new()
+	dialog.title_text = title
+	dialog.body_text = body
+	dialog.add_action("OK", on_ok, true)
+	show_dialog(dialog)
+	return dialog
+
+static func dismiss_current():
+	M3Overlay.dismiss_type("dialog")
