@@ -110,13 +110,14 @@ func _draw_linear():
 	
 	# Draw full track behind everything
 	draw_rect(Rect2(Vector2(radius, track_y), Vector2(rect.size.x - track_height, track_height)), _track_color, true)
-	draw_circle(Vector2(radius, track_y + radius), radius, _track_color)
-	draw_circle(Vector2(rect.size.x - radius, track_y + radius), radius, _track_color)
+	var cap_radius = radius * 0.75
+	draw_arc(Vector2(radius, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _track_color, cap_radius, true)
+	draw_arc(Vector2(rect.size.x - radius, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _track_color, cap_radius, true)
 	
 	# Endpoint indicator (right side only, 4dp dot)
 	var endpoint_radius = M3Units.dp(2)
 	var endpoint_color = M3Theme.get_on_surface()
-	draw_circle(Vector2(rect.size.x - radius, track_y + radius), endpoint_radius, endpoint_color)
+	draw_arc(Vector2(rect.size.x - radius, track_y + radius), endpoint_radius / 2.0, 0.0, TAU, 32, endpoint_color, endpoint_radius, true)
 	
 	# Draw fill on top of track
 	if fill_width > 0:
@@ -124,9 +125,9 @@ func _draw_linear():
 		if fill_rect_width > 0:
 			draw_rect(Rect2(Vector2(start_x + radius, track_y), Vector2(fill_rect_width, track_height)), _indicator_color, true)
 		# Fill left cap
-		draw_circle(Vector2(start_x + radius, track_y + radius), radius, _indicator_color)
+		draw_arc(Vector2(start_x + radius, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
 		# Fill right cap (before gap) — always draw, just like track caps
-		draw_circle(Vector2(end_x, track_y + radius), radius, _indicator_color)
+		draw_arc(Vector2(end_x, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
 
 func _draw_circular():
 	var diameter: float
@@ -176,8 +177,9 @@ func _draw_circular():
 			var start_point = center + Vector2(cos(actual_start), sin(actual_start)) * radius
 			var end_point = center + Vector2(cos(actual_end), sin(actual_end)) * radius
 			
-			draw_circle(start_point, stroke / 2.0, _indicator_color)
-			draw_circle(end_point, stroke / 2.0, _indicator_color)
+			var cap_radius = stroke * 0.375
+			draw_arc(start_point, cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
+			draw_arc(end_point, cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
 
 func _draw_thick_arc(center: Vector2, radius: float, start_angle: float, end_angle: float, color: Color, width: float):
 	# Godot angles: 0 = right, positive = counter-clockwise

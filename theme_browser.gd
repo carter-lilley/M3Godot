@@ -359,6 +359,125 @@ func _ready():
 	var chip_idx = chip_section.get_index()
 	$MarginContainer/ScrollContainer/VBoxContainer.add_child(progress_section)
 	$MarginContainer/ScrollContainer/VBoxContainer.move_child(progress_section, chip_idx + 1)
+	
+	# Create split button test section
+	var split_section = VBoxContainer.new()
+	split_section.name = "SplitButtonTests"
+	
+	var split_label = Label.new()
+	split_label.text = "M3 Split Buttons"
+	split_section.add_child(split_label)
+	
+	# Row 1: Icon + Label variants
+	var split_row1 = HBoxContainer.new()
+	split_row1.add_theme_constant_override("separation", 12)
+	
+	var split_filled = M3SplitButton.new()
+	split_filled.button_size = M3Button.Size.MEDIUM
+	split_filled.button_variant = M3Button.Variant.FILLED
+	split_filled.icon_name = "edit"
+	split_filled.text = "Edit"
+	split_filled.pressed.connect(func(): print("Split button main action: Edit"))
+	var edit_menu = M3Menu.new()
+	edit_menu.add_item("Cut", func(): print("Cut"))
+	edit_menu.add_item("Copy", func(): print("Copy"))
+	edit_menu.add_item("Paste", func(): print("Paste"))
+	split_filled.menu = edit_menu
+	split_row1.add_child(split_filled)
+	
+	var split_tonal = M3SplitButton.new()
+	split_tonal.button_size = M3Button.Size.MEDIUM
+	split_tonal.button_variant = M3Button.Variant.TONAL
+	split_tonal.icon_name = "download"
+	split_tonal.text = "Download"
+	var download_menu = M3Menu.new()
+	download_menu.add_item("PDF", func(): print("Download PDF"))
+	download_menu.add_item("PNG", func(): print("Download PNG"))
+	download_menu.add_item("SVG", func(): print("Download SVG"))
+	split_tonal.menu = download_menu
+	split_row1.add_child(split_tonal)
+	
+	var split_outlined = M3SplitButton.new()
+	split_outlined.button_size = M3Button.Size.MEDIUM
+	split_outlined.button_variant = M3Button.Variant.OUTLINED
+	split_outlined.icon_name = "share"
+	split_outlined.text = "Share"
+	var share_menu = M3Menu.new()
+	share_menu.add_item("Email", func(): print("Share via Email"))
+	share_menu.add_item("Message", func(): print("Share via Message"))
+	share_menu.add_item("Copy link", func(): print("Copy link"))
+	split_outlined.menu = share_menu
+	split_row1.add_child(split_outlined)
+	
+	split_section.add_child(split_row1)
+	
+	# Row 2: Label-only and Icon-only, different sizes
+	var split_row2 = HBoxContainer.new()
+	split_row2.add_theme_constant_override("separation", 12)
+	
+	var split_small = M3SplitButton.new()
+	split_small.button_size = M3Button.Size.SMALL
+	split_small.button_variant = M3Button.Variant.FILLED
+	split_small.text = "Small"
+	var small_menu = M3Menu.new()
+	small_menu.add_item("Option A", func(): print("Small A"))
+	small_menu.add_item("Option B", func(): print("Small B"))
+	split_small.menu = small_menu
+	split_row2.add_child(split_small)
+	
+	var split_large = M3SplitButton.new()
+	split_large.button_size = M3Button.Size.LARGE
+	split_large.button_variant = M3Button.Variant.FILLED
+	split_large.icon_name = "star"
+	var large_menu = M3Menu.new()
+	large_menu.add_item("Favorite", func(): print("Favorite"))
+	large_menu.add_item("Bookmark", func(): print("Bookmark"))
+	split_large.menu = large_menu
+	split_row2.add_child(split_large)
+	
+	var split_xl = M3SplitButton.new()
+	split_xl.button_size = M3Button.Size.EXTRA_LARGE
+	split_xl.button_variant = M3Button.Variant.ELEVATED
+	split_xl.icon_name = "settings"
+	split_xl.text = "Settings"
+	var xl_menu = M3Menu.new()
+	xl_menu.add_item("General", func(): print("General settings"))
+	xl_menu.add_item("Display", func(): print("Display settings"))
+	xl_menu.add_item("Network", func(): print("Network settings"))
+	split_xl.menu = xl_menu
+	split_row2.add_child(split_xl)
+	
+	split_section.add_child(split_row2)
+	
+	# Row 3: Text variant and disabled
+	var split_row3 = HBoxContainer.new()
+	split_row3.add_theme_constant_override("separation", 12)
+	
+	var split_text = M3SplitButton.new()
+	split_text.button_size = M3Button.Size.MEDIUM
+	split_text.button_variant = M3Button.Variant.TEXT
+	split_text.icon_name = "filter_list"
+	split_text.text = "Filter"
+	var filter_menu = M3Menu.new()
+	filter_menu.add_check_item("Active", true, func(): print("Toggle active"))
+	filter_menu.add_check_item("Archived", false, func(): print("Toggle archived"))
+	split_text.menu = filter_menu
+	split_row3.add_child(split_text)
+	
+	var split_disabled = M3SplitButton.new()
+	split_disabled.button_size = M3Button.Size.MEDIUM
+	split_disabled.button_variant = M3Button.Variant.FILLED
+	split_disabled.icon_name = "cloud_upload"
+	split_disabled.text = "Upload"
+	split_disabled.disabled = true
+	split_row3.add_child(split_disabled)
+	
+	split_section.add_child(split_row3)
+	
+	# Add after progress section
+	var progress_idx = progress_section.get_index()
+	$MarginContainer/ScrollContainer/VBoxContainer.add_child(split_section)
+	$MarginContainer/ScrollContainer/VBoxContainer.move_child(split_section, progress_idx + 1)
 
 func _create_test_button(text: String, callback: Callable, variant: int = M3Button.Variant.FILLED) -> M3Button:
 	var btn = M3Button.new()
@@ -516,7 +635,7 @@ func apply_theme():
 
 func _update_m3_components(node: Node):
 	for child in node.get_children():
-		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip or child is M3Dialog or child is M3Snackbar or child is M3Menu or child is M3OptionButton or child is M3Chip or child is M3Progress:
+		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip or child is M3Dialog or child is M3Snackbar or child is M3Menu or child is M3OptionButton or child is M3Chip or child is M3Progress or child is M3SplitButton:
 			child.refresh_theme()
 		if child.get_child_count() > 0:
 			_update_m3_components(child)

@@ -449,7 +449,13 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	var has_icon = _icon_node and _icon_node.visible
 	
 	style.bg_color = bg
-	style.set_corner_radius_all(radius)
+	if _custom_corner_radii.is_empty():
+		style.set_corner_radius_all(radius)
+	else:
+		style.corner_radius_top_left = _custom_corner_radii[0]
+		style.corner_radius_top_right = _custom_corner_radii[1]
+		style.corner_radius_bottom_left = _custom_corner_radii[2]
+		style.corner_radius_bottom_right = _custom_corner_radii[3]
 	style.content_margin_top = 0
 	style.content_margin_bottom = 0
 	style.shadow_size = shadow_size
@@ -552,8 +558,27 @@ func _update_icon_position():
 	var pad_h = M3Units.dp(spec["padding_h"])
 	var icon_size_px = M3Units.dp(spec["icon_size"])
 	
-	# Position icon area at left padding, vertically centered
+	var icon_x: float
+	if text.is_empty():
+		# Center icon horizontally when no text
+		icon_x = size.x / 2.0 - icon_size_px / 2.0
+	else:
+		icon_x = pad_h
+	
 	_icon_node.position = Vector2(
-		pad_h,
+		icon_x,
 		size.y / 2.0 - icon_size_px / 2.0
 	)
+
+var _custom_corner_radii: Array[int] = []
+
+func set_corner_radii(tl: int, tr: int, bl: int, br: int) -> void:
+	"""Override corner radii on all cached styleboxes and future updates."""
+	_custom_corner_radii = [tl, tr, bl, br]
+	for sb in [_cached_style_normal, _cached_style_hover, _cached_style_pressed, _cached_style_disabled, _cached_style_focus, _cached_style_hover_pressed]:
+		if sb:
+			sb.corner_radius_top_left = tl
+			sb.corner_radius_top_right = tr
+			sb.corner_radius_bottom_left = bl
+			sb.corner_radius_bottom_right = br
+	queue_redraw()
