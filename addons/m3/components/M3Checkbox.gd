@@ -57,6 +57,9 @@ func _enter_tree():
 	flat = true
 	M3Theme.hide_native_check_icons(self)
 	
+	# Suppress native focus stylebox - we draw our own ring
+	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	
 	# Text styling - use on_surface for proper contrast
 	var fonts = M3Theme.load_fonts()
 	add_theme_font_override("font", fonts["regular"])
@@ -74,9 +77,9 @@ func _enter_tree():
 func _ready():
 	clip_contents = false
 	
-	# Fixed size: touch target height, content width (never expand)
+	# Fixed size: touch target on both axes (bounds match touch target, never expand)
 	var touch_px = M3Units.dp(TOUCH_TARGET)
-	custom_minimum_size = Vector2(0, touch_px)
+	custom_minimum_size = Vector2(touch_px, touch_px)
 	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	

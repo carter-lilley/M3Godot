@@ -29,9 +29,14 @@ var _renderer: M3MenuRenderer = null
 var _summoner: Control = null
 var _submenu: M3Menu = null
 var _submenu_item_index: int = -1
+var _summoner_start_pos: Vector2 = Vector2.ZERO
 
 ## When true, checkable items toggle without dismissing the menu.
 var multi_select: bool = false
+
+## When true, the menu is automatically freed after dismissal.
+## Set to false for reusable menus (e.g., checkable menus that need to persist state).
+var auto_free: bool = true
 
 # ============================================
 # LIFECYCLE
@@ -41,6 +46,13 @@ func _init():
 	super._init()
 	overlay_type = "menu"
 	overlay_layer = 95
+
+func _process(_delta):
+	# Dismiss if summoner has moved (e.g., page scrolled)
+	if not visible or _summoner == null or not is_instance_valid(_summoner):
+		return
+	if _summoner.global_position.distance_to(_summoner_start_pos) > 1.0:
+		dismiss()
 
 # ============================================
 # BUILDER API
@@ -99,6 +111,7 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 	# Release previous summoner
 	_release_summoner()
 	_summoner = anchor
+	_summoner_start_pos = anchor.global_position
 	_set_summoner_active(true)
 	
 	if as_submenu:
@@ -168,6 +181,8 @@ func dismiss():
 		_renderer.navigated_off_edge.disconnect(_on_navigated_off_edge)
 	dismissed.emit()
 	visible = false
+	if auto_free:
+		queue_free()
 
 func _on_renderer_dismissed():
 	# Renderer dismissed itself (outside click or item selection)
@@ -285,6 +300,7 @@ func _release_summoner():
 		if is_instance_valid(_summoner):
 			_set_summoner_active(false)
 		_summoner = null
+	_summoner_start_pos = Vector2.ZERO
 
 func _set_summoner_active(active: bool):
 	if _summoner == null or not is_instance_valid(_summoner):

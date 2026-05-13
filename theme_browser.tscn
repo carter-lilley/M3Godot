@@ -1459,32 +1459,6 @@ theme_override_constants/separation = 8
 layout_mode = 2
 value = 3.0
 
-[node name="RowProgress" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454437]
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="ProgressBar" type="ProgressBar" parent="MarginContainer/ScrollContainer/VBoxContainer/RowProgress" unique_id=1063255672]
-layout_mode = 2
-size_flags_horizontal = 3
-value = 50.0
-
-[node name="RowSeparators" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=53454438]
-visible = false
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="HSeparator" type="HSeparator" parent="MarginContainer/ScrollContainer/VBoxContainer/RowSeparators" unique_id=1063255673]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowSeparators" unique_id=1063255674]
-layout_mode = 2
-text = "Separated"
-
-[node name="VSeparator" type="VSeparator" parent="MarginContainer/ScrollContainer/VBoxContainer/RowSeparators" unique_id=1063255675]
-layout_mode = 2
-
 [node name="RowTextAreas" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=2144285234]
 layout_mode = 2
 theme_override_constants/separation = 8

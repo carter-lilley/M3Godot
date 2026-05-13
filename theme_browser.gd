@@ -208,6 +208,7 @@ func _ready():
 	
 	# Build persistent checkable menus so checked states survive across openings
 	_checkable_menu = M3Menu.new()
+	_checkable_menu.auto_free = false
 	_checkable_menu.add_check_item("Show bounding box", false, func(): print("Toggle bounding box"))
 	_checkable_menu.add_check_item("Show grid", true, func(): print("Toggle grid"))
 	_checkable_menu.add_separator()
@@ -215,6 +216,7 @@ func _ready():
 	_checkable_menu.add_check_item("Night mode", false, func(): print("Toggle night mode"))
 	
 	_multi_select_menu = M3Menu.new()
+	_multi_select_menu.auto_free = false
 	_multi_select_menu.multi_select = true
 	_multi_select_menu.add_check_item("Wi-Fi", true, func(): print("Toggle Wi-Fi"))
 	_multi_select_menu.add_check_item("Bluetooth", false, func(): print("Toggle Bluetooth"))
@@ -225,12 +227,14 @@ func _ready():
 	
 	# Build submenu test
 	var sub = M3Menu.new()
+	sub.auto_free = false
 	sub.add_item("Sub-item 1", func(): print("Sub-item 1"))
 	sub.add_item("Sub-item 2", func(): print("Sub-item 2"))
 	sub.add_separator()
 	sub.add_item("Sub-item 3", func(): print("Sub-item 3"))
 	
 	_submenu_menu = M3Menu.new()
+	_submenu_menu.auto_free = false
 	_submenu_menu.add_item("Regular item", func(): print("Regular item"))
 	_submenu_menu.add_submenu_item("More options", sub, "expand_more")
 	_submenu_menu.add_item("Another item", func(): print("Another item"))
@@ -359,6 +363,26 @@ func _ready():
 	var chip_idx = chip_section.get_index()
 	$MarginContainer/ScrollContainer/VBoxContainer.add_child(progress_section)
 	$MarginContainer/ScrollContainer/VBoxContainer.move_child(progress_section, chip_idx + 1)
+	
+	# Create sheet test section
+	var sheet_section = VBoxContainer.new()
+	sheet_section.name = "SheetTests"
+	
+	var sheet_label = Label.new()
+	sheet_label.text = "M3 Sheets"
+	sheet_section.add_child(sheet_label)
+	
+	var sheet_btn_row = HBoxContainer.new()
+	sheet_btn_row.add_theme_constant_override("separation", 12)
+	
+	var side_sheet_btn = _create_test_button("Side Sheet", _on_side_sheet_test_pressed)
+	var bottom_sheet_btn = _create_test_button("Bottom Sheet", _on_bottom_sheet_test_pressed)
+	sheet_btn_row.add_child(side_sheet_btn)
+	sheet_btn_row.add_child(bottom_sheet_btn)
+	sheet_section.add_child(sheet_btn_row)
+	
+	# Add before split button section
+	$MarginContainer/ScrollContainer/VBoxContainer.add_child(sheet_section)
 	
 	# Create split button test section
 	var split_section = VBoxContainer.new()
@@ -524,6 +548,14 @@ func _on_dialog_alert_test_pressed():
 		func(): print("OK clicked")
 	)
 
+func _on_side_sheet_test_pressed():
+	var sheet = M3SideSheet.show_side_sheet("Side Sheet", M3Sheet.Variant.MODAL)
+	print("Side sheet opened")
+
+func _on_bottom_sheet_test_pressed():
+	var sheet = M3BottomSheet.show_bottom_sheet("Bottom Sheet", M3Sheet.Variant.MODAL)
+	print("Bottom sheet opened")
+
 func _on_standard_menu_test_pressed():
 	var menu = M3Menu.new()
 	menu.add_item("Preview", func(): print("Preview"), "visibility")
@@ -635,7 +667,7 @@ func apply_theme():
 
 func _update_m3_components(node: Node):
 	for child in node.get_children():
-		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip or child is M3Dialog or child is M3Snackbar or child is M3Menu or child is M3OptionButton or child is M3Chip or child is M3Progress or child is M3SplitButton:
+		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip or child is M3Dialog or child is M3Snackbar or child is M3Menu or child is M3OptionButton or child is M3Chip or child is M3Progress or child is M3SplitButton or child is M3Sheet or child is M3SideSheet or child is M3BottomSheet:
 			child.refresh_theme()
 		if child.get_child_count() > 0:
 			_update_m3_components(child)
