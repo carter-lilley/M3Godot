@@ -88,21 +88,8 @@ enum Variant { FILLED, OUTLINED }
 			_update_prefix_suffix()
 			_update_layout()
 
-@export var m3_tooltip_text: String = "":
-	set(value):
-		if value == m3_tooltip_text:
-			return
-		m3_tooltip_text = value
-		if _tooltip:
-			_tooltip.m3_tooltip_text = value
-
-@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
-	set(value):
-		if value == m3_tooltip_variant:
-			return
-		m3_tooltip_variant = value
-		if _tooltip:
-			_tooltip.m3_tooltip_variant = value
+@export var m3_tooltip_text: String = ""
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
 # ============================================
 # SIGNALS
@@ -143,8 +130,8 @@ var _bg_panel: Panel
 
 var _is_focused: bool = false
 var _hovered: bool = false
+var _menu_active: bool = false
 var _ready_called: bool = false
-var _tooltip: M3Tooltip
 
 var _cached_bg_sb: StyleBoxFlat
 var _cached_border_sb: StyleBoxFlat
@@ -174,6 +161,11 @@ func _ready():
 	_update_theme()
 	_update_layout()
 	
+	# Apply theme overrides once; _update_layout() only mutates margins
+	add_theme_stylebox_override("normal", _cached_empty_normal)
+	add_theme_stylebox_override("focus", _cached_empty_focus)
+	add_theme_stylebox_override("read_only", _cached_empty_readonly)
+	
 	# Ensure minimum size is respected (prevents collapse in containers)
 	var min_size = _get_minimum_size()
 	if custom_minimum_size.y < min_size.y:
@@ -188,7 +180,7 @@ func _ready():
 	focus_exited.connect(_on_focus_exited)
 	text_changed.connect(_on_text_changed)
 	
-	_setup_tooltip()
+	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
 	
 	_ready_called = true
 	queue_redraw()
@@ -196,8 +188,8 @@ func _ready():
 	# Force layout after container has sized us
 	call_deferred("_update_layout")
 
-func _setup_tooltip():
-	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
+func _exit_tree():
+	M3Tooltip.unbind(self)
 
 func _initialize_styleboxes():
 	_cached_bg_sb = StyleBoxFlat.new()
@@ -305,6 +297,13 @@ func _on_focus_exited():
 	_update_layout()
 	queue_redraw()
 
+func set_menu_active(active: bool):
+	_menu_active = active
+	_update_theme()
+	_update_floating_label()
+	_update_layout()
+	queue_redraw()
+
 func _on_text_changed(_new_text: String):
 	_update_floating_label()
 	_update_layout()
@@ -328,7 +327,7 @@ func _draw():
 	elif has_error:
 		border_color = M3Theme.get_error()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
-	elif _is_focused:
+	elif _is_focused or _menu_active:
 		border_color = M3Theme.get_primary()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
 	elif _hovered:
@@ -425,7 +424,7 @@ func _update_theme():
 		label_color = M3Theme.disabled_color(M3Theme.get_on_surface_variant())
 	elif has_error:
 		label_color = M3Theme.get_error()
-	elif _is_focused:
+	elif _is_focused or _menu_active:
 		label_color = M3Theme.get_primary()
 	else:
 		label_color = M3Theme.get_on_surface_variant()
@@ -540,10 +539,6 @@ func _update_layout():
 	_cached_empty_readonly.content_margin_top = text_top
 	_cached_empty_readonly.content_margin_bottom = text_bottom
 	
-	add_theme_stylebox_override("normal", _cached_empty_normal)
-	add_theme_stylebox_override("focus", _cached_empty_focus)
-	add_theme_stylebox_override("read_only", _cached_empty_readonly)
-	
 	# Floating label
 	if _floating_label and not label_text.is_empty():
 		if should_float:
@@ -633,7 +628,7 @@ func _update_prefix_suffix():
 		_suffix_label.text = suffix_text
 
 func _should_float_label() -> bool:
-	if _is_focused:
+	if _is_focused or _menu_active:
 		return true
 	return not text.is_empty()
 

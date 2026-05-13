@@ -157,21 +157,8 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_slider.value = v
 		_request_redraw()
 
-@export var m3_tooltip_text: String = "":
-	set(value):
-		if value == m3_tooltip_text:
-			return
-		m3_tooltip_text = value
-		if _tooltip:
-			_tooltip.m3_tooltip_text = value
-
-@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
-	set(value):
-		if value == m3_tooltip_variant:
-			return
-		m3_tooltip_variant = value
-		if _tooltip:
-			_tooltip.m3_tooltip_variant = value
+@export var m3_tooltip_text: String = ""
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
 # ============================================
 # INTERNAL
@@ -189,7 +176,6 @@ var _is_dragging_range: bool = false
 var _is_dragging_primary: bool = false
 var _is_focused: bool = false
 var _prev_value: float = 0.0  # Value before current drag/click interaction
-var _tooltip: M3Tooltip
 
 var _effective_min: float = 0.0
 var _effective_max: float = 100.0
@@ -319,10 +305,10 @@ func _ready():
 	
 	_update_range_hitbox_position()
 	_request_redraw()
-	_setup_tooltip()
+	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
 
-func _setup_tooltip():
-	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
+func _exit_tree():
+	M3Tooltip.unbind(self)
 
 func _initialize_caches():
 	# Pre-allocate StyleBoxFlat instances for reuse

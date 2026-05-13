@@ -16,6 +16,7 @@ var checkable: bool = false
 var disabled: bool = false
 var item_type: Type = Type.NORMAL
 var callback: Callable = Callable()
+var submenu: M3Menu = null
 
 func _init(p_text: String = "", p_icon: String = "", p_type: Type = Type.NORMAL):
 	text = p_text
@@ -48,3 +49,8 @@ static func make_section_label(label: String) -> M3MenuItem:
 
 static func make_separator() -> M3MenuItem:
 	return M3MenuItem.new("", "", Type.SEPARATOR)
+
+static func make_submenu(label: String, p_submenu: M3Menu, icon_name: String = "") -> M3MenuItem:
+	var item = M3MenuItem.new(label, icon_name, Type.NORMAL)
+	item.submenu = p_submenu
+	return item

@@ -105,21 +105,8 @@ const SIZE_SPECS = {
 		_update_icon()
 		# _update_theme() is called by _update_icon() if visibility changes
 
-@export var m3_tooltip_text: String = "":
-	set(value):
-		if value == m3_tooltip_text:
-			return
-		m3_tooltip_text = value
-		if _tooltip:
-			_tooltip.m3_tooltip_text = value
-
-@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
-	set(value):
-		if value == m3_tooltip_variant:
-			return
-		m3_tooltip_variant = value
-		if _tooltip:
-			_tooltip.m3_tooltip_variant = value
+@export var m3_tooltip_text: String = ""
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
 # ============================================
 # INTERNAL
@@ -127,7 +114,7 @@ const SIZE_SPECS = {
 
 var _icon_node: FontIcon
 var _is_pressing: bool = false
-var _tooltip: M3Tooltip
+var _menu_active: bool = false
 
 # Cached StyleBoxFlat instances (allocated once, mutated per state)
 var _cached_style_normal: StyleBoxFlat
@@ -161,10 +148,10 @@ func _ready():
 	button_up.connect(_on_button_up)
 	
 	# Setup tooltip
-	_setup_tooltip()
+	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
 
-func _setup_tooltip():
-	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
+func _exit_tree():
+	M3Tooltip.unbind(self)
 
 func _on_button_down():
 	_is_pressing = true
@@ -173,6 +160,12 @@ func _on_button_down():
 
 func _on_button_up():
 	_is_pressing = false
+	_update_colors()
+	queue_redraw()
+
+func set_menu_active(active: bool):
+	_menu_active = active
+	_update_theme()
 	_update_colors()
 	queue_redraw()
 
@@ -376,12 +369,17 @@ func _update_theme():
 		shadow_off = M3Theme.ELEVATION_1["offset"]
 		shadow_col = M3Theme.ELEVATION_1["color"]
 	
+	# Menu active override: show pressed state on normal/hover/focus
+	var display_bg = pressed_bg if _menu_active else bg
+	var display_hover = pressed_bg if _menu_active else hover_bg
+	var display_focus = pressed_bg if _menu_active else bg
+	
 	# Normal state
-	_configure_stylebox(_cached_style_normal, bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
+	_configure_stylebox(_cached_style_normal, display_bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	add_theme_stylebox_override("normal", _cached_style_normal)
 	
 	# Hover state
-	_configure_stylebox(_cached_style_hover, hover_bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
+	_configure_stylebox(_cached_style_hover, display_hover, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	add_theme_stylebox_override("hover", _cached_style_hover)
 	
 	# Pressed state (shadow drops on press; always 0 for pressed state)
@@ -393,7 +391,7 @@ func _update_theme():
 	add_theme_stylebox_override("disabled", _cached_style_disabled)
 	
 	# Focus state
-	_configure_stylebox(_cached_style_focus, bg, radius, pad_h, 3, focus_border)
+	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, 3, focus_border)
 	add_theme_stylebox_override("focus", _cached_style_focus)
 	
 	# Hover pressed state (checked hover for toggles)
@@ -418,6 +416,9 @@ func _update_theme():
 	var current_text: Color
 	if disabled:
 		current_text = disabled_text
+	elif _menu_active:
+		# Menu open: show pressed/selected state
+		current_text = sel_text
 	elif button_type == Type.TOGGLE:
 		var target_selected: bool = button_pressed != _is_pressing
 		current_text = sel_text if target_selected else text

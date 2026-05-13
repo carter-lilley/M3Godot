@@ -6,6 +6,9 @@ const M3Menu = preload("res://addons/m3/components/M3Menu.gd")
 const M3MenuRenderer = preload("res://addons/m3/components/M3MenuRenderer.gd")
 
 var _menu_test_buttons: Array[Button] = []
+var _checkable_menu: M3Menu = null
+var _multi_select_menu: M3Menu = null
+var _submenu_menu: M3Menu = null
 
 @export var dark_mode: bool = false:
 	set(value):
@@ -23,17 +26,79 @@ func _ready():
 	dark_mode_toggle.toggled.connect(_on_dark_mode_toggled)
 	
 	# Populate MenuButton
-	var menu = $MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls/MenuButton.get_popup()
-	menu.add_item("Item 1")
-	menu.add_item("Item 2")
-	menu.add_item("Item 3")
+	if has_node("MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls/MenuButton"):
+		var menu_btn = $MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls/MenuButton
+		var menu = menu_btn.get_popup()
+		menu.add_item("Item 1")
+		menu.add_item("Item 2")
+		menu.add_item("Item 3")
 	
 	# Populate OptionButton
-	var option = $MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls/OptionButton
-	option.add_item("Option 1")
-	option.add_item("Option 2")
-	option.add_item("Option 3")
-	option.select(0)
+	if has_node("MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls/OptionButton"):
+		var option = $MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls/OptionButton
+		option.add_item("Option 1")
+		option.add_item("Option 2")
+		option.add_item("Option 3")
+		option.select(0)
+	
+	# Create M3OptionButton test section
+	var option_section = VBoxContainer.new()
+	option_section.name = "M3OptionButtonTests"
+	
+	var option_label = Label.new()
+	option_label.text = "M3 Option Button"
+	option_section.add_child(option_label)
+	
+	var option_row = HBoxContainer.new()
+	option_row.add_theme_constant_override("separation", 16)
+	
+	var m3_option = M3OptionButton.new()
+	m3_option.name = "M3OptionButton"
+	m3_option.field_variant = M3TextField.Variant.FILLED
+	m3_option.label_text = "Select an option"
+	m3_option.supporting_text = "Tap to open dropdown"
+	m3_option.add_item("Apple", 0)
+	m3_option.add_item("Banana", 1)
+	m3_option.add_item("Cherry", 2)
+	m3_option.add_item("Date", 3)
+	m3_option.add_item("Elderberry", 4)
+	m3_option.selected = 0
+	m3_option.item_selected.connect(func(idx): print("Selected item: %d" % idx))
+	option_row.add_child(m3_option)
+	
+	var m3_option_outlined = M3OptionButton.new()
+	m3_option_outlined.name = "M3OptionButtonOutlined"
+	m3_option_outlined.field_variant = M3TextField.Variant.OUTLINED
+	m3_option_outlined.label_text = "Outlined variant"
+	m3_option_outlined.add_item("Small", 0)
+	m3_option_outlined.add_item("Medium", 1)
+	m3_option_outlined.add_item("Large", 2)
+	m3_option_outlined.add_item("Extra Large", 3)
+	m3_option_outlined.selected = 1
+	option_row.add_child(m3_option_outlined)
+	
+	var m3_option_multi = M3OptionButton.new()
+	m3_option_multi.name = "M3OptionButtonMulti"
+	m3_option_multi.field_variant = M3TextField.Variant.FILLED
+	m3_option_multi.label_text = "Dietary preferences"
+	m3_option_multi.supporting_text = "Select all that apply"
+	m3_option_multi.multi_select = true
+	m3_option_multi.add_item("Vegetarian", 0)
+	m3_option_multi.add_item("Vegan", 1)
+	m3_option_multi.add_item("Gluten-free", 2)
+	m3_option_multi.add_item("Nut-free", 3)
+	m3_option_multi.add_item("Dairy-free", 4)
+	m3_option_multi.set_selected_indices([0, 2])
+	m3_option_multi.item_selected.connect(func(idx): print("Toggled dietary: %d" % idx))
+	option_row.add_child(m3_option_multi)
+	
+	option_section.add_child(option_row)
+	
+	# Add after M3TextFields
+	var text_fields = $MarginContainer/ScrollContainer/VBoxContainer/M3TextFields
+	var text_fields_idx = text_fields.get_index()
+	$MarginContainer/ScrollContainer/VBoxContainer.add_child(option_section)
+	$MarginContainer/ScrollContainer/VBoxContainer.move_child(option_section, text_fields_idx + 1)
 	
 	# Set RichTextLabel content
 	$MarginContainer/ScrollContainer/VBoxContainer/RowTextAreas/RichTextLabel.text = "[b]Bold[/b] and [i]italic[/i] text\n[color=red]Colored text[/color]\n[code]Code snippet[/code]"
@@ -116,17 +181,23 @@ func _ready():
 	var menu_btn_row = HBoxContainer.new()
 	menu_btn_row.add_theme_constant_override("separation", 8)
 	
-	var standard_menu_btn = _create_test_button("Show Standard Menu", _on_standard_menu_test_pressed)
-	var vibrant_menu_btn = _create_test_button("Show Vibrant Menu", _on_vibrant_menu_test_pressed)
-	var checkable_menu_btn = _create_test_button("Show Checkable Menu", _on_checkable_menu_test_pressed)
-	var twoline_menu_btn = _create_test_button("Show Two-Line Menu", _on_twoline_menu_test_pressed)
+	var standard_menu_btn = _create_test_button("Standard", _on_standard_menu_test_pressed, M3Button.Variant.FILLED)
+	var vibrant_menu_btn = _create_test_button("Vibrant", _on_vibrant_menu_test_pressed, M3Button.Variant.ELEVATED)
+	var checkable_menu_btn = _create_test_button("Checkable", _on_checkable_menu_test_pressed, M3Button.Variant.TONAL)
+	var twoline_menu_btn = _create_test_button("Two-Line", _on_twoline_menu_test_pressed, M3Button.Variant.OUTLINED)
+	var icon_menu_btn = _create_test_icon_button("more_vert", _on_icon_menu_test_pressed)
+	var multi_select_menu_btn = _create_test_button("Multi-Select", _on_multi_select_menu_test_pressed, M3Button.Variant.ELEVATED)
+	var submenu_menu_btn = _create_test_button("Submenu", _on_submenu_menu_test_pressed, M3Button.Variant.TONAL)
 	
 	menu_btn_row.add_child(standard_menu_btn)
 	menu_btn_row.add_child(vibrant_menu_btn)
 	menu_btn_row.add_child(checkable_menu_btn)
 	menu_btn_row.add_child(twoline_menu_btn)
+	menu_btn_row.add_child(icon_menu_btn)
+	menu_btn_row.add_child(multi_select_menu_btn)
+	menu_btn_row.add_child(submenu_menu_btn)
 	
-	_menu_test_buttons = [standard_menu_btn, vibrant_menu_btn, checkable_menu_btn, twoline_menu_btn]
+	_menu_test_buttons = [standard_menu_btn, vibrant_menu_btn, checkable_menu_btn, twoline_menu_btn, icon_menu_btn, multi_select_menu_btn, submenu_menu_btn]
 	
 	menu_section.add_child(menu_btn_row)
 	
@@ -134,10 +205,171 @@ func _ready():
 	var dialog_idx = dialog_section.get_index()
 	$MarginContainer/ScrollContainer/VBoxContainer.add_child(menu_section)
 	$MarginContainer/ScrollContainer/VBoxContainer.move_child(menu_section, dialog_idx + 1)
+	
+	# Build persistent checkable menus so checked states survive across openings
+	_checkable_menu = M3Menu.new()
+	_checkable_menu.add_check_item("Show bounding box", false, func(): print("Toggle bounding box"))
+	_checkable_menu.add_check_item("Show grid", true, func(): print("Toggle grid"))
+	_checkable_menu.add_separator()
+	_checkable_menu.add_section_label("View options")
+	_checkable_menu.add_check_item("Night mode", false, func(): print("Toggle night mode"))
+	
+	_multi_select_menu = M3Menu.new()
+	_multi_select_menu.multi_select = true
+	_multi_select_menu.add_check_item("Wi-Fi", true, func(): print("Toggle Wi-Fi"))
+	_multi_select_menu.add_check_item("Bluetooth", false, func(): print("Toggle Bluetooth"))
+	_multi_select_menu.add_check_item("Airplane mode", false, func(): print("Toggle Airplane mode"))
+	_multi_select_menu.add_separator()
+	_multi_select_menu.add_check_item("Dark theme", false, func(): print("Toggle Dark theme"))
+	_multi_select_menu.add_check_item("High contrast", false, func(): print("Toggle High contrast"))
+	
+	# Build submenu test
+	var sub = M3Menu.new()
+	sub.add_item("Sub-item 1", func(): print("Sub-item 1"))
+	sub.add_item("Sub-item 2", func(): print("Sub-item 2"))
+	sub.add_separator()
+	sub.add_item("Sub-item 3", func(): print("Sub-item 3"))
+	
+	_submenu_menu = M3Menu.new()
+	_submenu_menu.add_item("Regular item", func(): print("Regular item"))
+	_submenu_menu.add_submenu_item("More options", sub, "expand_more")
+	_submenu_menu.add_item("Another item", func(): print("Another item"))
+	
+	# Create chip test section
+	var chip_section = VBoxContainer.new()
+	chip_section.name = "ChipTests"
+	
+	var chip_label = Label.new()
+	chip_label.text = "M3 Chips"
+	chip_section.add_child(chip_label)
+	
+	var chip_row = HBoxContainer.new()
+	chip_row.add_theme_constant_override("separation", 8)
+	
+	var assist_chip = M3Chip.new()
+	assist_chip.text = "Assist"
+	assist_chip.chip_variant = M3Chip.ChipVariant.ASSIST
+	assist_chip.leading_icon = "event"
+	assist_chip.pressed.connect(func(): print("Assist chip pressed"))
+	chip_row.add_child(assist_chip)
+	
+	var filter_chip = M3Chip.new()
+	filter_chip.text = "Filter"
+	filter_chip.chip_variant = M3Chip.ChipVariant.FILTER
+	filter_chip.checked = true
+	filter_chip.checked_changed.connect(func(c): print("Filter chip: %s" % c))
+	chip_row.add_child(filter_chip)
+	
+	var filter_dropdown_chip = M3Chip.new()
+	filter_dropdown_chip.text = "Sort"
+	filter_dropdown_chip.chip_variant = M3Chip.ChipVariant.FILTER
+	filter_dropdown_chip.trailing_icon = "triangle-small-down"
+	filter_dropdown_chip.menu_requested.connect(func():
+		var menu = M3Menu.new()
+		menu.add_item("Name", func():
+			print("Sort by name")
+			filter_dropdown_chip.checked = true
+		)
+		menu.add_item("Date", func():
+			print("Sort by date")
+			filter_dropdown_chip.checked = true
+		)
+		menu.add_item("Rating", func():
+			print("Sort by rating")
+			filter_dropdown_chip.checked = true
+		)
+		menu.popup(filter_dropdown_chip)
+	)
+	chip_row.add_child(filter_dropdown_chip)
+	
+	var input_chip = M3Chip.new()
+	input_chip.text = "Input"
+	input_chip.chip_variant = M3Chip.ChipVariant.INPUT
+	input_chip.close_requested.connect(func(): print("Input chip close"))
+	chip_row.add_child(input_chip)
+	
+	var suggestion_chip = M3Chip.new()
+	suggestion_chip.text = "Suggestion"
+	suggestion_chip.chip_variant = M3Chip.ChipVariant.SUGGESTION
+	suggestion_chip.pressed.connect(func(): print("Suggestion chip pressed"))
+	chip_row.add_child(suggestion_chip)
+	
+	var elevated_chip = M3Chip.new()
+	elevated_chip.text = "Elevated"
+	elevated_chip.chip_variant = M3Chip.ChipVariant.SUGGESTION
+	elevated_chip.elevated = true
+	elevated_chip.pressed.connect(func(): print("Elevated chip pressed"))
+	chip_row.add_child(elevated_chip)
+	
+	chip_section.add_child(chip_row)
+	
+	# Add after menu section
+	var menu_tests = $MarginContainer/ScrollContainer/VBoxContainer/MenuTests
+	var menu_idx = menu_tests.get_index()
+	$MarginContainer/ScrollContainer/VBoxContainer.add_child(chip_section)
+	$MarginContainer/ScrollContainer/VBoxContainer.move_child(chip_section, menu_idx + 1)
+	
+	# Create progress test section
+	var progress_section = VBoxContainer.new()
+	progress_section.name = "ProgressTests"
+	
+	var progress_label = Label.new()
+	progress_label.text = "M3 Progress"
+	progress_section.add_child(progress_label)
+	
+	# Linear progress row
+	var linear_row = VBoxContainer.new()
+	linear_row.add_theme_constant_override("separation", 16)
+	
+	var linear_small = M3Progress.new()
+	linear_small.mode = M3Progress.Mode.LINEAR
+	linear_small.progress_size = M3Progress.Size.SMALL
+	linear_small.indeterminate = true
+	linear_small.custom_minimum_size = Vector2(300, 0)
+	linear_row.add_child(linear_small)
+	
+	var linear_large = M3Progress.new()
+	linear_large.mode = M3Progress.Mode.LINEAR
+	linear_large.progress_size = M3Progress.Size.LARGE
+	linear_large.indeterminate = true
+	linear_large.custom_minimum_size = Vector2(300, 0)
+	linear_row.add_child(linear_large)
+	
+	progress_section.add_child(linear_row)
+	
+	# Circular progress row
+	var circular_row = HBoxContainer.new()
+	circular_row.add_theme_constant_override("separation", 24)
+	
+	var circular_small = M3Progress.new()
+	circular_small.mode = M3Progress.Mode.CIRCULAR
+	circular_small.progress_size = M3Progress.Size.SMALL
+	circular_small.indeterminate = true
+	circular_row.add_child(circular_small)
+	
+	var circular_large = M3Progress.new()
+	circular_large.mode = M3Progress.Mode.CIRCULAR
+	circular_large.progress_size = M3Progress.Size.LARGE
+	circular_large.indeterminate = true
+	circular_row.add_child(circular_large)
+	
+	progress_section.add_child(circular_row)
+	
+	# Add after chip section
+	var chip_idx = chip_section.get_index()
+	$MarginContainer/ScrollContainer/VBoxContainer.add_child(progress_section)
+	$MarginContainer/ScrollContainer/VBoxContainer.move_child(progress_section, chip_idx + 1)
 
-func _create_test_button(text: String, callback: Callable) -> Button:
-	var btn = Button.new()
+func _create_test_button(text: String, callback: Callable, variant: int = M3Button.Variant.FILLED) -> M3Button:
+	var btn = M3Button.new()
 	btn.text = text
+	btn.button_variant = variant
+	btn.pressed.connect(callback)
+	return btn
+
+func _create_test_icon_button(icon_name: String, callback: Callable) -> M3IconButton:
+	var btn = M3IconButton.new()
+	btn.icon_name = icon_name
 	btn.pressed.connect(callback)
 	return btn
 
@@ -193,13 +425,7 @@ func _on_vibrant_menu_test_pressed():
 	menu.popup(_menu_test_buttons[1])
 
 func _on_checkable_menu_test_pressed():
-	var menu = M3Menu.new()
-	menu.add_check_item("Show bounding box", false, func(): print("Toggle bounding box"))
-	menu.add_check_item("Show grid", true, func(): print("Toggle grid"))
-	menu.add_separator()
-	menu.add_section_label("View options")
-	menu.add_check_item("Night mode", false, func(): print("Toggle night mode"))
-	menu.popup(_menu_test_buttons[2])
+	_checkable_menu.popup(_menu_test_buttons[2])
 
 func _on_twoline_menu_test_pressed():
 	var menu = M3Menu.new()
@@ -208,6 +434,21 @@ func _on_twoline_menu_test_pressed():
 	menu.add_separator()
 	menu.add_item("Simple item", func(): print("Simple"))
 	menu.popup(_menu_test_buttons[3])
+
+func _on_icon_menu_test_pressed():
+	var menu = M3Menu.new()
+	menu.add_item("Settings", func(): print("Settings"), "settings")
+	menu.add_item("Profile", func(): print("Profile"), "person")
+	menu.add_separator()
+	menu.add_item("Help", func(): print("Help"), "help")
+	menu.add_item("Logout", func(): print("Logout"), "logout")
+	menu.popup(_menu_test_buttons[4])
+
+func _on_multi_select_menu_test_pressed():
+	_multi_select_menu.popup(_menu_test_buttons[5])
+
+func _on_submenu_menu_test_pressed():
+	_submenu_menu.popup(_menu_test_buttons[6])
 
 func _on_dialog_fullscreen_test_pressed():
 	var dialog = M3Dialog.new()
@@ -247,8 +488,8 @@ func apply_theme():
 	$Background.queue_redraw()
 	
 	# Update the ColorRect to show surface variant color
-	var color_rect = $MarginContainer/ScrollContainer/VBoxContainer/RowToggles/ColorRect
-	if color_rect:
+	if has_node("MarginContainer/ScrollContainer/VBoxContainer/RowToggles/ColorRect"):
+		var color_rect = $MarginContainer/ScrollContainer/VBoxContainer/RowToggles/ColorRect
 		color_rect.color = M3Theme.get_surface_variant()
 	
 	# Update elevation preview panels
@@ -275,7 +516,7 @@ func apply_theme():
 
 func _update_m3_components(node: Node):
 	for child in node.get_children():
-		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip:
+		if child is M3Slider or child is M3Button or child is M3IconButton or child is M3Navigation or child is M3Switch or child is M3TextField or child is M3Checkbox or child is M3Tooltip or child is M3Dialog or child is M3Snackbar or child is M3Menu or child is M3OptionButton or child is M3Chip or child is M3Progress:
 			child.refresh_theme()
 		if child.get_child_count() > 0:
 			_update_m3_components(child)

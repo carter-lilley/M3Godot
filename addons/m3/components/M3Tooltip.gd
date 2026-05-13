@@ -1,43 +1,13 @@
-@tool
 class_name M3Tooltip
-extends Control
+extends M3Overlay
 
 const M3Units = preload("res://addons/m3/M3Units.gd")
 
-## Material 3 Tooltip Component
-## Renders as a top_level overlay positioned relative to its anchor node.
-## Supports plain (compact, dark) and rich (spacious, light) variants.
+## Material 3 Tooltip Overlay
+## Extends M3Overlay for consistent overlay behavior.
+## Single shared instance pattern - only one tooltip visible at a time.
 
 enum Variant { PLAIN, RICH }
-
-# ============================================
-# EXPORTS
-# ============================================
-
-@export var m3_tooltip_text: String = "":
-	set(value):
-		if value == m3_tooltip_text:
-			return
-		m3_tooltip_text = value
-		if _ready_called:
-			_update_content()
-
-@export var m3_tooltip_variant: Variant = Variant.PLAIN:
-	set(value):
-		if value == m3_tooltip_variant:
-			return
-		m3_tooltip_variant = value
-		if _ready_called:
-			_update_appearance()
-			_update_content()
-
-@export var show_delay_ms: int = 500
-
-@export var show_on_focus: bool = true:
-	set(value):
-		show_on_focus = value
-		if _ready_called:
-			_update_focus_connections()
 
 # ============================================
 # CONSTANTS
@@ -55,6 +25,23 @@ const RICH_MAX_WIDTH := 280.0
 const VIEWPORT_MARGIN := 8.0
 const OFFSET_WITH_BOUNDARY := 4.0
 const OFFSET_WITHOUT_BOUNDARY := 8.0
+const SHOW_DELAY_MS := 500
+
+# ============================================
+# STATIC STATE
+# ============================================
+
+static var _delay_timer: Timer = null
+static var _scheduled_control: Control = null
+
+# ============================================
+# EXPORTS (instance-level, set before show_overlay)
+# ============================================
+
+var _tooltip_text: String = ""
+var _tooltip_variant: Variant = Variant.PLAIN
+var _anchor_node: Control = null
+var _anchor_rect_override: Rect2 = Rect2()
 
 # ============================================
 # INTERNAL
@@ -63,29 +50,127 @@ const OFFSET_WITHOUT_BOUNDARY := 8.0
 var _label: Label
 var _rich_label: RichTextLabel
 var _bg_panel: Panel
-var _ready_called: bool = false
-var _show_timer: Timer
-var _anchor_node: Control = null
-var _is_hovering: bool = false
-var _is_focused: bool = false
-var _focus_acquired_with_hover: bool = false
+
+# ============================================
+# STATIC BIND API
+# ============================================
+
+## Bind a tooltip to a control. Call from _ready().
+static func bind(control: Control, text: String, variant: Variant = Variant.PLAIN):
+	if text.is_empty():
+		return
+	
+	# Store tooltip data in control metadata
+	control.set_meta("m3_tooltip_text", text)
+	control.set_meta("m3_tooltip_variant", variant)
+	
+	# Connect signals (avoid duplicates)
+	if not control.mouse_entered.is_connected(_on_control_mouse_entered):
+		control.mouse_entered.connect(_on_control_mouse_entered.bind(control))
+	if not control.mouse_exited.is_connected(_on_control_mouse_exited):
+		control.mouse_exited.connect(_on_control_mouse_exited.bind(control))
+	if not control.focus_entered.is_connected(_on_control_focus_entered):
+		control.focus_entered.connect(_on_control_focus_entered.bind(control))
+	if not control.focus_exited.is_connected(_on_control_focus_exited):
+		control.focus_exited.connect(_on_control_focus_exited.bind(control))
+
+## Unbind tooltip from a control. Call in _exit_tree() or before queue_free.
+static func unbind(control: Control):
+	if control.mouse_entered.is_connected(_on_control_mouse_entered):
+		control.mouse_entered.disconnect(_on_control_mouse_entered)
+	if control.mouse_exited.is_connected(_on_control_mouse_exited):
+		control.mouse_exited.disconnect(_on_control_mouse_exited)
+	if control.focus_entered.is_connected(_on_control_focus_entered):
+		control.focus_entered.disconnect(_on_control_focus_entered)
+	if control.focus_exited.is_connected(_on_control_focus_exited):
+		control.focus_exited.disconnect(_on_control_focus_exited)
+	
+	control.remove_meta("m3_tooltip_text")
+	control.remove_meta("m3_tooltip_variant")
+
+static func _ensure_timer():
+	if _delay_timer == null or not is_instance_valid(_delay_timer):
+		_delay_timer = Timer.new()
+		_delay_timer.one_shot = true
+		_delay_timer.wait_time = SHOW_DELAY_MS / 1000.0
+		_delay_timer.timeout.connect(_on_timer_timeout)
+		var tree = Engine.get_main_loop()
+		if tree and tree.root:
+			tree.root.add_child(_delay_timer)
+
+static func _on_control_mouse_entered(control: Control):
+	_schedule_show(control)
+
+static func _on_control_mouse_exited(control: Control):
+	_cancel_show()
+	if M3Overlay.is_showing("tooltip"):
+		var active = M3Overlay._active.get("tooltip")
+		if active is M3Tooltip and active._anchor_node == control:
+			active.dismiss()
+
+static func _on_control_focus_entered(control: Control):
+	_schedule_show(control)
+
+static func _on_control_focus_exited(control: Control):
+	_cancel_show()
+	if M3Overlay.is_showing("tooltip"):
+		var active = M3Overlay._active.get("tooltip")
+		if active is M3Tooltip and active._anchor_node == control:
+			active.dismiss()
+
+static func _schedule_show(control: Control):
+	_ensure_timer()
+	_scheduled_control = control
+	_delay_timer.stop()
+	_delay_timer.start()
+
+static func _cancel_show():
+	if _delay_timer:
+		_delay_timer.stop()
+	_scheduled_control = null
+
+static func _on_timer_timeout():
+	if _scheduled_control == null or not is_instance_valid(_scheduled_control):
+		return
+	
+	var control = _scheduled_control
+	_scheduled_control = null
+	
+	var text = control.get_meta("m3_tooltip_text", "")
+	if text.is_empty():
+		return
+	
+	var variant = control.get_meta("m3_tooltip_variant", Variant.PLAIN)
+	_show_for(control, text, variant)
+
+static func _show_for(control: Control, text: String, variant: Variant):
+	var tooltip = M3Tooltip.new()
+	tooltip._tooltip_text = text
+	tooltip._tooltip_variant = variant
+	tooltip._anchor_node = control
+	
+	# Check for custom anchor rect
+	if control.has_method("get_tooltip_anchor_rect"):
+		tooltip._anchor_rect_override = control.get_tooltip_anchor_rect()
+	
+	var tree = Engine.get_main_loop()
+	if tree and tree.root:
+		tree.root.add_child(tooltip)
+		tooltip.show_overlay()
 
 # ============================================
 # LIFECYCLE
 # ============================================
 
+func _init():
+	super._init()
+	overlay_type = "tooltip"
+	overlay_layer = 110
+
 func _ready():
-	top_level = true
-	z_index = 100
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	visible = false
-	
+	super._ready()
 	_create_visuals()
-	_create_timer()
-	_update_appearance()
-	_update_content()
-	
-	_ready_called = true
+	_position_and_show()
 
 func _create_visuals():
 	# Background panel
@@ -109,151 +194,71 @@ func _create_visuals():
 	_rich_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_rich_label)
 
-func _exit_tree():
-	if _anchor_node:
-		_disconnect_anchor_signals()
-		_anchor_node = null
-
-func _create_timer():
-	_show_timer = Timer.new()
-	_show_timer.one_shot = true
-	_show_timer.wait_time = show_delay_ms / 1000.0
-	_show_timer.timeout.connect(_on_timer_timeout)
-	add_child(_show_timer)
-
-# ============================================
-# PUBLIC API
-# ============================================
-
-## Show tooltip anchored to the given Control node.
-## Optionally provide a custom anchor rect for positioning (e.g. checkbox box only).
-var _anchor_rect_override: Rect2 = Rect2()
-
-func set_anchor_rect_override(rect: Rect2):
-	_anchor_rect_override = rect
-
-func show_for(anchor: Control):
-	if not anchor:
-		return
-	
-	# Disconnect from previous anchor if different
-	if _anchor_node and _anchor_node != anchor:
-		_disconnect_anchor_signals()
-	
-	_anchor_node = anchor
-	_is_hovering = true
-	
-	# Connect focus signals if needed
-	if show_on_focus:
-		_connect_focus_signals()
-	
-	# Cancel any pending show
-	_show_timer.stop()
-	hide()
-	
-	# Start delay timer
-	_show_timer.start()
-
-## Hide tooltip immediately.
-func hide_tooltip():
-	_is_hovering = false
-	# Hide immediately if not focused, or if focus was acquired from mouse click
-	if not _is_focused or _focus_acquired_with_hover:
-		_show_timer.stop()
-		hide()
-
-# ============================================
-# PRIVATE
-# ============================================
-
-func _on_timer_timeout():
-	if not _anchor_node:
-		return
-	
-	# Only show if hovering or focused
-	if not _is_hovering and not _is_focused:
-		return
-	
+func _position_and_show():
 	_update_appearance()
-	_update_content()
-	_position_tooltip()
-	visible = true
-	queue_redraw()
-
-func _position_tooltip():
-	if not _anchor_node:
-		return
 	
-	var anchor_rect: Rect2
-	if _anchor_rect_override.has_area():
-		# Convert local rect to global coordinates
-		var global_pos = _anchor_node.global_position + _anchor_rect_override.position
-		anchor_rect = Rect2(global_pos, _anchor_rect_override.size)
-	elif _anchor_node.has_method("get_tooltip_anchor_rect"):
-		# Component provides custom anchor rect (e.g. checkbox box only)
-		var local_rect = _anchor_node.get_tooltip_anchor_rect()
-		var global_pos = _anchor_node.global_position + local_rect.position
-		anchor_rect = Rect2(global_pos, local_rect.size)
-	else:
-		anchor_rect = _anchor_node.get_global_rect()
+	# Rich tooltips need text set BEFORE measurement (get_content_height)
+	if _tooltip_variant == Variant.RICH:
+		_rich_label.text = _tooltip_text
+	
 	var tooltip_size = _get_tooltip_size()
+	var anchor_rect = _get_anchor_rect()
 	var viewport_size = get_viewport().get_visible_rect().size
 	var margin = M3Units.dp(VIEWPORT_MARGIN)
 	
 	var pos: Vector2
-	
-	if m3_tooltip_variant == Variant.PLAIN:
+	if _tooltip_variant == Variant.PLAIN:
 		pos = _position_plain(anchor_rect, tooltip_size, viewport_size, margin)
 	else:
 		pos = _position_rich(anchor_rect, tooltip_size, viewport_size, margin)
-	
-	# Snap to 8dp grid for rich tooltips only
-	# Plain tooltips should be precisely centered
-	if m3_tooltip_variant == Variant.RICH:
 		var grid = M3Units.dp(8)
-		pos = Vector2(
-			floor(pos.x / grid) * grid,
-			floor(pos.y / grid) * grid
-		)
+		pos = Vector2(floor(pos.x / grid) * grid, floor(pos.y / grid) * grid)
 	
-	global_position = pos
-	size = tooltip_size
-	
-	# Update panel size
-	_bg_panel.position = Vector2.ZERO
+	# Position background panel
+	_bg_panel.position = pos
 	_bg_panel.size = tooltip_size
 	
-	# Update label position
-	if m3_tooltip_variant == Variant.PLAIN:
+	# Position label and set text AFTER size is known (avoids cached layout bug)
+	if _tooltip_variant == Variant.PLAIN:
 		var pad_h = M3Units.dp(PLAIN_PADDING_H)
-		_label.position = Vector2(pad_h, 0)
+		_label.position = Vector2(pos.x + pad_h, pos.y)
 		_label.size = Vector2(tooltip_size.x - pad_h * 2, tooltip_size.y)
+		_label.text = _tooltip_text
 	else:
 		var pad = M3Units.dp(RICH_PADDING)
-		_rich_label.position = Vector2(pad, pad)
+		_rich_label.position = Vector2(pos.x + pad, pos.y + pad)
 		_rich_label.size = Vector2(tooltip_size.x - pad * 2, tooltip_size.y - pad * 2)
+
+func _get_anchor_rect() -> Rect2:
+	if not _anchor_node:
+		return Rect2()
+	
+	if _anchor_rect_override.has_area():
+		return Rect2(
+			_anchor_node.global_position + _anchor_rect_override.position,
+			_anchor_rect_override.size
+		)
+	
+	return _anchor_node.get_global_rect()
+
+# ============================================
+# POSITIONING
+# ============================================
 
 func _position_plain(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: Vector2, margin: float) -> Vector2:
 	var offset = M3Units.dp(_get_offset_for_anchor())
 	var placement = _get_placement_for_anchor()
 	
-	# Horizontal: centered on anchor
-	var pos = anchor_rect.position + Vector2(
-		(anchor_rect.size.x - tooltip_size.x) / 2.0,
-		0
-	)
+	var pos = anchor_rect.position + Vector2((anchor_rect.size.x - tooltip_size.x) / 2.0, 0)
 	
-	# Vertical: above or below based on placement
 	if placement == "below":
 		pos.y = anchor_rect.position.y + anchor_rect.size.y + offset
 	else:
 		pos.y = anchor_rect.position.y - tooltip_size.y - offset
 	
-	# Clamp to viewport bounds
 	pos.x = clamp(pos.x, margin, viewport_size.x - tooltip_size.x - margin)
 	pos.y = clamp(pos.y, margin, viewport_size.y - tooltip_size.y - margin)
 	
-	# If preferred placement doesn't fit, flip
 	if placement == "below" and pos.y + tooltip_size.y > viewport_size.y - margin:
 		pos.y = anchor_rect.position.y - tooltip_size.y - offset
 		pos.y = max(pos.y, margin)
@@ -266,28 +271,24 @@ func _position_plain(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: V
 func _position_rich(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: Vector2, margin: float) -> Vector2:
 	var gap = M3Units.dp(8)
 	
-	# Try positions: bottom-right, bottom-left, top-right, top-left
 	var positions = [
-		Vector2(anchor_rect.position.x + anchor_rect.size.x + gap, anchor_rect.position.y + anchor_rect.size.y + gap),  # bottom-right
-		Vector2(anchor_rect.position.x - tooltip_size.x - gap, anchor_rect.position.y + anchor_rect.size.y + gap),      # bottom-left
-		Vector2(anchor_rect.position.x + anchor_rect.size.x + gap, anchor_rect.position.y - tooltip_size.y - gap),      # top-right
-		Vector2(anchor_rect.position.x - tooltip_size.x - gap, anchor_rect.position.y - tooltip_size.y - gap),          # top-left
+		Vector2(anchor_rect.position.x + anchor_rect.size.x + gap, anchor_rect.position.y + anchor_rect.size.y + gap),
+		Vector2(anchor_rect.position.x - tooltip_size.x - gap, anchor_rect.position.y + anchor_rect.size.y + gap),
+		Vector2(anchor_rect.position.x + anchor_rect.size.x + gap, anchor_rect.position.y - tooltip_size.y - gap),
+		Vector2(anchor_rect.position.x - tooltip_size.x - gap, anchor_rect.position.y - tooltip_size.y - gap),
 	]
 	
-	for pos in positions:
-		# Check if this position keeps the tooltip on screen and doesn't overlap anchor
-		var fits_x = pos.x >= margin and pos.x + tooltip_size.x <= viewport_size.x - margin
-		var fits_y = pos.y >= margin and pos.y + tooltip_size.y <= viewport_size.y - margin
-		var overlaps_anchor = Rect2(pos, tooltip_size).intersects(anchor_rect)
-		
-		if fits_x and fits_y and not overlaps_anchor:
-			return pos
+	for p in positions:
+		var fits_x = p.x >= margin and p.x + tooltip_size.x <= viewport_size.x - margin
+		var fits_y = p.y >= margin and p.y + tooltip_size.y <= viewport_size.y - margin
+		var overlaps = Rect2(p, tooltip_size).intersects(anchor_rect)
+		if fits_x and fits_y and not overlaps:
+			return p
 	
-	# Fallback: clamp the first position (bottom-right) to viewport, even if it overlaps
-	var pos = positions[0]
-	pos.x = clamp(pos.x, margin, viewport_size.x - tooltip_size.x - margin)
-	pos.y = clamp(pos.y, margin, viewport_size.y - tooltip_size.y - margin)
-	return pos
+	var p = positions[0]
+	p.x = clamp(p.x, margin, viewport_size.x - tooltip_size.x - margin)
+	p.y = clamp(p.y, margin, viewport_size.y - tooltip_size.y - margin)
+	return p
 
 func _get_offset_for_anchor() -> float:
 	if _has_visual_boundary(_anchor_node):
@@ -299,22 +300,19 @@ func _get_placement_for_anchor() -> String:
 		return "below"
 	return "above"
 
-# Static type arrays for fast boundary checks (avoid long 'is' chains)
-static var _BOUNDARY_TYPES = [M3Button, M3IconButton, M3Switch, M3Slider, M3NavigationDestination, M3TextField]
-static var _NATIVE_BOUNDARY_TYPES = [Button, LineEdit, TextEdit, CheckBox, CheckButton, OptionButton]
-
 func _has_visual_boundary(node: Control) -> bool:
 	if not node:
 		return false
-	for t in _BOUNDARY_TYPES:
-		if is_instance_of(node, t):
-			return true
+	# Group-based overrides for extensibility (custom controls can opt in/out)
+	if node.is_in_group("m3_no_boundary"):
+		return false
+	if node.is_in_group("m3_has_boundary"):
+		return true
+	# M3Checkbox is the exception: no visual boundary
 	if is_instance_of(node, M3Checkbox):
 		return false
-	for t in _NATIVE_BOUNDARY_TYPES:
-		if is_instance_of(node, t):
-			return true
-	return false
+	# All other interactive controls have visual boundaries
+	return is_instance_of(node, Button) or is_instance_of(node, LineEdit) or is_instance_of(node, TextEdit) or is_instance_of(node, CheckBox) or is_instance_of(node, CheckButton) or is_instance_of(node, OptionButton)
 
 func _is_in_app_bar(node: Control) -> bool:
 	if not node:
@@ -327,74 +325,24 @@ func _is_in_app_bar(node: Control) -> bool:
 	return false
 
 # ============================================
-# FOCUS HANDLING
+# SIZING
 # ============================================
 
-func _connect_focus_signals():
-	if not _anchor_node:
-		return
-	if not _anchor_node.focus_entered.is_connected(_on_anchor_focus_entered):
-		_anchor_node.focus_entered.connect(_on_anchor_focus_entered)
-	if not _anchor_node.focus_exited.is_connected(_on_anchor_focus_exited):
-		_anchor_node.focus_exited.connect(_on_anchor_focus_exited)
-
-func _disconnect_anchor_signals():
-	if not _anchor_node:
-		return
-	if _anchor_node.focus_entered.is_connected(_on_anchor_focus_entered):
-		_anchor_node.focus_entered.disconnect(_on_anchor_focus_entered)
-	if _anchor_node.focus_exited.is_connected(_on_anchor_focus_exited):
-		_anchor_node.focus_exited.disconnect(_on_anchor_focus_exited)
-	_focus_acquired_with_hover = false
-
-func _on_anchor_focus_entered():
-	_is_focused = true
-	# If focus was acquired while hovering, treat as click focus - should still hide on mouse exit
-	_focus_acquired_with_hover = _is_hovering
-	if not visible:
-		_show_timer.stop()
-		_show_timer.start()
-
-func _on_anchor_focus_exited():
-	_is_focused = false
-	_focus_acquired_with_hover = false
-	if not _is_hovering:
-		_show_timer.stop()
-		hide()
-
-func _update_focus_connections():
-	if _anchor_node:
-		if show_on_focus:
-			_connect_focus_signals()
-		else:
-			_disconnect_anchor_signals()
-			_is_focused = false
-			if not _is_hovering and visible:
-				hide()
-
 func _get_tooltip_size() -> Vector2:
-	if m3_tooltip_variant == Variant.PLAIN:
+	if _tooltip_variant == Variant.PLAIN:
 		var pad_h = M3Units.dp(PLAIN_PADDING_H)
 		var pad_v = M3Units.dp(PLAIN_PADDING_V)
 		var max_w = M3Units.dp(PLAIN_MAX_WIDTH)
+		var fonts = M3Theme.load_fonts()
+		var font = fonts["medium"]
+		var font_size = M3Units.dp(12)
 		
-		var old_size = _label.size
-		var old_autowrap = _label.autowrap_mode
+		var text_width = font.get_string_size(_tooltip_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var width = min(text_width + pad_h * 2, max_w)
 		
-		# Measure unwrapped width for sizing
-		_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-		var unwrapped_size = _label.get_minimum_size()
-		
-		# Measure wrapped height at max width
-		_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_label.size.x = max_w - pad_h * 2
-		var wrapped_size = _label.get_minimum_size()
-		
-		_label.size = old_size
-		_label.autowrap_mode = old_autowrap
-		
-		var width = min(unwrapped_size.x + pad_h * 2, max_w)
-		var height = max(wrapped_size.y + pad_v * 2, M3Units.dp(24))
+		var lines = 1 if text_width <= max_w - pad_h * 2 else ceili(text_width / (max_w - pad_h * 2))
+		var line_height = font.get_height(font_size) * 1.2
+		var height = max(lines * line_height + pad_v * 2, M3Units.dp(24))
 		
 		return Vector2(width, height)
 	else:
@@ -403,19 +351,23 @@ func _get_tooltip_size() -> Vector2:
 		
 		_rich_label.size = Vector2(max_w - pad * 2, 0)
 		var text_size = _rich_label.get_content_height()
+		
 		var width = max_w
 		var height = text_size + pad * 2
 		
 		return Vector2(width, height)
 
+# ============================================
+# APPEARANCE
+# ============================================
+
 func _update_appearance():
 	var fonts = M3Theme.load_fonts()
 	
-	if m3_tooltip_variant == Variant.PLAIN:
+	if _tooltip_variant == Variant.PLAIN:
 		_label.visible = true
 		_rich_label.visible = false
 		
-		# Plain: inverse_surface bg, inverse_on_surface text
 		var bg = M3Theme.get_inverse_surface()
 		var text_color = M3Theme.get_inverse_on_surface()
 		
@@ -423,15 +375,12 @@ func _update_appearance():
 		_label.add_theme_font_override("font", fonts["medium"])
 		_label.add_theme_font_size_override("font_size", M3Units.dp(12))
 		
-		# Plain tooltip with Elevation 1 shadow
 		var sb = M3Theme.make_shadow(bg, M3Units.dpi(PLAIN_RADIUS), 2, Vector2(0, 1), Color(0, 0, 0, 0.15))
 		_bg_panel.add_theme_stylebox_override("panel", sb)
-		
 	else:
 		_label.visible = false
 		_rich_label.visible = true
 		
-		# Rich: surface_container bg, on_surface text
 		var bg = M3Theme.get_surface_container()
 		var text_color = M3Theme.get_on_surface()
 		
@@ -440,18 +389,5 @@ func _update_appearance():
 		_rich_label.add_theme_font_override("bold_font", fonts["bold"])
 		_rich_label.add_theme_font_size_override("normal_font_size", M3Units.dp(14))
 		
-		# Rich tooltip with Elevation 2 shadow
 		var sb = M3Theme.make_shadow(bg, M3Units.dpi(RICH_RADIUS), 4, Vector2(0, 2), Color(0, 0, 0, 0.18))
 		_bg_panel.add_theme_stylebox_override("panel", sb)
-
-func _update_content():
-	if m3_tooltip_variant == Variant.PLAIN:
-		_label.text = m3_tooltip_text
-	else:
-		_rich_label.text = m3_tooltip_text
-
-func refresh_theme():
-	_update_appearance()
-	if visible:
-		_position_tooltip()
-		queue_redraw()

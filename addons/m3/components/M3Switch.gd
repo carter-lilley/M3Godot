@@ -31,21 +31,8 @@ const THUMB_PADDING := 4.0  # Minimum padding from track edge (dp)
 		_update_icon()
 		queue_redraw()
 
-@export var m3_tooltip_text: String = "":
-	set(value):
-		if value == m3_tooltip_text:
-			return
-		m3_tooltip_text = value
-		if _tooltip:
-			_tooltip.m3_tooltip_text = value
-
-@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
-	set(value):
-		if value == m3_tooltip_variant:
-			return
-		m3_tooltip_variant = value
-		if _tooltip:
-			_tooltip.m3_tooltip_variant = value
+@export var m3_tooltip_text: String = ""
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
 # ============================================
 # INTERNAL
@@ -57,7 +44,6 @@ var _track_sb: StyleBoxFlat
 var _thumb_sb: StyleBoxFlat
 var _focus_sb: StyleBoxFlat
 var _icon_node: FontIcon
-var _tooltip: M3Tooltip
 
 # ============================================
 # LIFECYCLE
@@ -81,16 +67,20 @@ func _ready():
 	button_down.connect(func(): _is_pressing = true; queue_redraw())
 	button_up.connect(func(): _is_pressing = false; queue_redraw())
 	toggled.connect(func(_v): queue_redraw())
+	mouse_entered.connect(func(): _hovered = true; queue_redraw())
+	mouse_exited.connect(func(): _hovered = false; queue_redraw())
+	focus_entered.connect(queue_redraw)
+	focus_exited.connect(queue_redraw)
 	
 	_initialize_styleboxes()
 	_initialize_icon()
-	_setup_tooltip()
+	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
+
+func _exit_tree():
+	M3Tooltip.unbind(self)
 
 func _get_minimum_size() -> Vector2:
 	return Vector2(M3Units.dp(TRACK_WIDTH), M3Units.dp(TRACK_HEIGHT))
-
-func _setup_tooltip():
-	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
 
 func _initialize_styleboxes():
 	_track_sb = StyleBoxFlat.new()
@@ -141,19 +131,6 @@ func _update_icon():
 # ============================================
 # DRAW
 # ============================================
-
-func _notification(what: int):
-	match what:
-		NOTIFICATION_MOUSE_ENTER:
-			_hovered = true
-			queue_redraw()
-		NOTIFICATION_MOUSE_EXIT:
-			_hovered = false
-			queue_redraw()
-		NOTIFICATION_FOCUS_ENTER:
-			queue_redraw()
-		NOTIFICATION_FOCUS_EXIT:
-			queue_redraw()
 
 func _draw():
 	var track_width_px = M3Units.dp(TRACK_WIDTH)

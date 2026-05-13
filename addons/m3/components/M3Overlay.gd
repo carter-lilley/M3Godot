@@ -70,5 +70,10 @@ func _input(event: InputEvent):
 	if not visible:
 		return
 	if event.is_action_pressed("ui_cancel"):
+		# Only dismiss if we're the highest-layer active overlay
+		for type in _active.keys():
+			var other = _active[type]
+			if is_instance_valid(other) and other != self and other.visible and other.layer > self.layer:
+				return
 		get_viewport().set_input_as_handled()
 		dismiss()

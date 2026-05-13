@@ -34,21 +34,8 @@ const TOUCH_TARGET := 40.0
 		error = value
 		queue_redraw()
 
-@export var m3_tooltip_text: String = "":
-	set(value):
-		if value == m3_tooltip_text:
-			return
-		m3_tooltip_text = value
-		if _tooltip:
-			_tooltip.m3_tooltip_text = value
-
-@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN:
-	set(value):
-		if value == m3_tooltip_variant:
-			return
-		m3_tooltip_variant = value
-		if _tooltip:
-			_tooltip.m3_tooltip_variant = value
+@export var m3_tooltip_text: String = ""
+@export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
 # ============================================
 # INTERNAL
@@ -56,7 +43,6 @@ const TOUCH_TARGET := 40.0
 
 var _hovered: bool = false
 var _pressed: bool = false
-var _tooltip: M3Tooltip
 
 # Cached StyleBoxFlats (allocated once, mutated per draw)
 var _cached_box_sb: StyleBoxFlat
@@ -88,10 +74,10 @@ func _enter_tree():
 func _ready():
 	clip_contents = false
 	
-	# Minimum height is touch target, but let width expand for text
+	# Fixed size: touch target height, content width (never expand)
 	var touch_px = M3Units.dp(TOUCH_TARGET)
 	custom_minimum_size = Vector2(0, touch_px)
-	size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	# Connect signals
@@ -102,10 +88,10 @@ func _ready():
 	mouse_exited.connect(func(): _hovered = false; queue_redraw())
 	
 	_initialize_styleboxes()
-	_setup_tooltip()
+	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
 
-func _setup_tooltip():
-	_tooltip = M3Theme.setup_tooltip(self, m3_tooltip_text, m3_tooltip_variant)
+func _exit_tree():
+	M3Tooltip.unbind(self)
 
 # ============================================
 # DRAW
@@ -163,12 +149,14 @@ func _draw_box(rect: Rect2, is_checked: bool, is_disabled: bool):
 	
 	if is_checked:
 		var fill_color = M3Theme.get_error() if error else M3Theme.get_primary()
-		sb.bg_color = Color(fill_color.r, fill_color.g, fill_color.b, fill_color.a * alpha)
+		fill_color.a *= alpha
+		sb.bg_color = fill_color
 		sb.set_border_width_all(0)
 	else:
 		var border_color = M3Theme.get_error() if error else M3Theme.get_outline()
 		sb.bg_color = Color.TRANSPARENT
-		sb.border_color = Color(border_color.r, border_color.g, border_color.b, border_color.a * alpha)
+		border_color.a *= alpha
+		sb.border_color = border_color
 		sb.set_border_width_all(M3Units.dp(BORDER_WIDTH))
 	
 	draw_style_box(sb, rect)
@@ -178,8 +166,8 @@ func _draw_checkmark(rect: Rect2, is_disabled: bool):
 	if error:
 		check_color = M3Theme.get_on_error()
 	
-	var alpha = 0.38 if is_disabled else 1.0
-	var color = Color(check_color.r, check_color.g, check_color.b, check_color.a * alpha)
+	if is_disabled:
+		check_color.a *= 0.38
 	var stroke = M3Units.dp(CHECK_STROKE)
 	
 	# Checkmark points within the box
@@ -187,22 +175,22 @@ func _draw_checkmark(rect: Rect2, is_disabled: bool):
 	var p2 = rect.position + Vector2(rect.size.x * 0.42, rect.size.y * 0.72)
 	var p3 = rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.28)
 	
-	draw_line(p1, p2, color, stroke, true)
-	draw_line(p2, p3, color, stroke, true)
+	draw_line(p1, p2, check_color, stroke, true)
+	draw_line(p2, p3, check_color, stroke, true)
 
 func _draw_indeterminate(rect: Rect2, is_disabled: bool):
 	var line_color = M3Theme.get_on_primary()
 	if error:
 		line_color = M3Theme.get_on_error()
 	
-	var alpha = 0.38 if is_disabled else 1.0
-	var color = Color(line_color.r, line_color.g, line_color.b, line_color.a * alpha)
+	if is_disabled:
+		line_color.a *= 0.38
 	var stroke = M3Units.dp(CHECK_STROKE)
 	
 	var start = rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.5)
 	var end = rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.5)
 	
-	draw_line(start, end, color, stroke, true)
+	draw_line(start, end, line_color, stroke, true)
 
 func _draw_focus_ring(center: Vector2):
 	var radius = M3Units.dp(TOUCH_TARGET) / 2.0
@@ -214,11 +202,10 @@ func _draw_state_overlay(center: Vector2, is_checked: bool):
 	
 	# M3 spec: hover overlay uses on-surface color at state layer opacity
 	var overlay_color = M3Theme.get_on_surface()
-	var opacity = 0.12 if _pressed else 0.08
-	var color = Color(overlay_color.r, overlay_color.g, overlay_color.b, opacity)
+	overlay_color.a = 0.12 if _pressed else 0.08
 	
 	var sb = _cached_overlay_sb
-	sb.bg_color = color
+	sb.bg_color = overlay_color
 	sb.set_corner_radius_all(int(radius))
 	var rect = Rect2(center - Vector2(radius, radius), Vector2(radius * 2, radius * 2))
 	draw_style_box(sb, rect)

@@ -222,6 +222,10 @@ func setup(msg: String, act_text: String = "", action_callback: Callable = Calla
 	action_text = act_text
 	dismissible = can_dismiss
 	
+	# Disconnect previous callback(s) to avoid accumulation on reuse
+	for conn in action_pressed.get_connections():
+		action_pressed.disconnect(conn.callable)
+	
 	if action_callback.is_valid():
 		action_pressed.connect(action_callback)
 	

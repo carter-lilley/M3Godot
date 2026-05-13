@@ -1380,21 +1380,6 @@ supporting_text = "Supporting text."
 leading_icon = "star"
 metadata/_custom_type_script = "uid://dxu4u734ecmxi"
 
-[node name="RowBasicControls" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=64863647]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Label" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls" unique_id=1095898104]
-layout_mode = 2
-text = "label"
-
-[node name="MenuButton" type="MenuButton" parent="MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls" unique_id=642934998]
-layout_mode = 2
-text = "menu button"
-
-[node name="OptionButton" type="OptionButton" parent="MarginContainer/ScrollContainer/VBoxContainer/RowBasicControls" unique_id=573280167]
-layout_mode = 2
-
 [node name="TabContainer" type="TabContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=983974047]
 visible = false
 layout_mode = 2
@@ -2371,7 +2356,7 @@ script = ExtResource("6_m3switch")
 
 [node name="M3Checkbox" type="CheckBox" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Switches/RowSwitches" unique_id=146411240]
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_horizontal = 4
 size_flags_vertical = 4
 theme_override_colors/font_color = Color(0.10980392, 0.105882354, 0.12156863, 1)
 theme_override_colors/font_focus_color = Color(0.10980392, 0.105882354, 0.12156863, 1)
@@ -2395,6 +2380,8 @@ flat = true
 script = ExtResource("5_6rsmr")
 m3_tooltip_text = "Balls lol"
 metadata/_custom_type_script = "uid://fmt3itosrqu4"
+metadata/m3_tooltip_text = "Balls lol"
+metadata/m3_tooltip_variant = 0
 
 [node name="M3ToggleButtons" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=999999041]
 layout_mode = 2
@@ -2580,6 +2567,8 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_s2ef2")
 text = "Plain Tooltip"
 script = ExtResource("3_m3button")
 m3_tooltip_text = "This is a plain tooltip"
+metadata/m3_tooltip_text = "This is a plain tooltip"
+metadata/m3_tooltip_variant = 0
 
 [node name="RichTooltip" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/M3Tooltips/RowTooltips" unique_id=999999078]
 layout_mode = 2
@@ -2601,6 +2590,9 @@ script = ExtResource("3_m3button")
 m3_tooltip_text = "[b]Rich Tooltip[/b]
 This tooltip supports [color=red]colors[/color], [i]italics[/i], and more."
 m3_tooltip_variant = 1
+metadata/m3_tooltip_text = "[b]Rich Tooltip[/b]
+This tooltip supports [color=red]colors[/color], [i]italics[/i], and more."
+metadata/m3_tooltip_variant = 1
 
 [node name="SnackbarTestButton" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer" unique_id=999999080]
 layout_mode = 2

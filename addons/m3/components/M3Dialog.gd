@@ -78,7 +78,8 @@ var _vbox: VBoxContainer
 var _hero_icon: FontIcon
 var _title_label: Label
 var _body_label: Label
-var _content_slot: VBoxContainer
+## The content slot for adding custom controls (VBoxContainer).
+var content_slot: VBoxContainer
 var _divider: HSeparator
 var _actions_container: HBoxContainer
 
@@ -96,11 +97,6 @@ var _ready_called: bool = false
 # ============================================
 # PUBLIC API
 # ============================================
-
-## The content slot for adding custom controls (VBoxContainer).
-var content_slot: VBoxContainer:
-	get:
-		return _content_slot
 
 ## Add an action button to the dialog.
 func add_action(label: String, callback: Callable = Callable(), primary: bool = false):
@@ -204,8 +200,8 @@ func _build_basic_layout():
 	body_content_spacer.name = "BodyContentSpacer"
 	_vbox.add_child(body_content_spacer)
 	
-	_content_slot = VBoxContainer.new()
-	_vbox.add_child(_content_slot)
+	content_slot = VBoxContainer.new()
+	_vbox.add_child(content_slot)
 	
 	_divider = HSeparator.new()
 	_divider.visible = false
@@ -293,8 +289,8 @@ func _build_fullscreen_layout():
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_scroll_content.add_child(_body_label)
 	
-	_content_slot = VBoxContainer.new()
-	_scroll_content.add_child(_content_slot)
+	content_slot = VBoxContainer.new()
+	_scroll_content.add_child(content_slot)
 	
 	_bottom_actions = Panel.new()
 	_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_ACTIONS_HEIGHT))
@@ -309,6 +305,14 @@ func _build_fullscreen_layout():
 	_dialog_container.set_anchors_preset(Control.PRESET_FULL_RECT)
 
 func _rebuild_layout():
+	# Disconnect and remove action buttons before clearing references
+	for btn in _actions:
+		for c in btn.pressed.get_connections():
+			btn.pressed.disconnect(c.callable)
+		if btn.get_parent():
+			btn.get_parent().remove_child(btn)
+	_actions.clear()
+	
 	for child in _dialog_container.get_children():
 		child.queue_free()
 	
@@ -318,7 +322,6 @@ func _rebuild_layout():
 	_scroll = null
 	_scroll_content = null
 	_bottom_actions = null
-	_actions.clear()
 	
 	if dialog_variant == Variant.BASIC:
 		_build_basic_layout()
@@ -372,7 +375,7 @@ func _update_appearance():
 	
 	if dialog_variant == Variant.BASIC:
 		var bg = M3Theme.get_surface_container()
-		var sb = M3Theme.make_shadow(bg, M3Units.dpi(BASIC_RADIUS), 
+		var sb = M3Theme.make_shadow(bg, M3Units.dpi(BASIC_RADIUS),
 			M3Theme.ELEVATION_3["size"], M3Theme.ELEVATION_3["offset"], M3Theme.ELEVATION_3["color"])
 		var pad = M3Units.dp(PADDING)
 		sb.content_margin_left = pad
@@ -381,13 +384,8 @@ func _update_appearance():
 		sb.content_margin_bottom = pad
 		_dialog_container.add_theme_stylebox_override("panel", sb)
 		
-		_title_label.add_theme_font_override("font", fonts["regular"])
-		_title_label.add_theme_font_size_override("font_size", M3Units.dp(24))
-		_title_label.add_theme_color_override("font_color", M3Theme.get_on_surface())
-		
-		_body_label.add_theme_font_override("font", fonts["regular"])
-		_body_label.add_theme_font_size_override("font_size", M3Units.dp(14))
-		_body_label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
+		_style_label(_title_label, fonts["regular"], M3Units.dp(24), M3Theme.get_on_surface())
+		_style_label(_body_label, fonts["regular"], M3Units.dp(14), M3Theme.get_on_surface_variant())
 		
 		var div_style = StyleBoxLine.new()
 		div_style.color = M3Theme.get_outline()
@@ -404,22 +402,20 @@ func _update_appearance():
 				break
 		
 		_top_bar.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
-		_top_bar_title.add_theme_font_override("font", fonts["regular"])
-		_top_bar_title.add_theme_font_size_override("font_size", M3Units.dp(22))
-		_top_bar_title.add_theme_color_override("font_color", M3Theme.get_on_surface())
+		_style_label(_top_bar_title, fonts["regular"], M3Units.dp(22), M3Theme.get_on_surface())
 		
 		_bottom_actions.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
 		
-		_title_label.add_theme_font_override("font", fonts["regular"])
-		_title_label.add_theme_font_size_override("font_size", M3Units.dp(24))
-		_title_label.add_theme_color_override("font_color", M3Theme.get_on_surface())
-		
-		_body_label.add_theme_font_override("font", fonts["regular"])
-		_body_label.add_theme_font_size_override("font_size", M3Units.dp(14))
-		_body_label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
+		_style_label(_title_label, fonts["regular"], M3Units.dp(24), M3Theme.get_on_surface())
+		_style_label(_body_label, fonts["regular"], M3Units.dp(14), M3Theme.get_on_surface_variant())
 		
 		if _hero_icon and _hero_icon.visible:
 			_hero_icon.icon_settings.icon_color = M3Theme.get_secondary()
+
+func _style_label(label: Label, font: Font, font_size: int, color: Color):
+	label.add_theme_font_override("font", font)
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
 
 func _update_text():
 	if _title_label:

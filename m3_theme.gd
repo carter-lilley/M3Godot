@@ -286,17 +286,9 @@ static func get_empty_texture() -> ImageTexture:
 # SHARED HELPERS
 # ============================================
 
-## Setup an M3Tooltip on any Control node.
-static func setup_tooltip(node: Control, text: String, variant: int) -> M3Tooltip:
-	if text.is_empty():
-		return null
-	var tooltip = M3Tooltip.new()
-	tooltip.m3_tooltip_text = text
-	tooltip.m3_tooltip_variant = variant
-	node.add_child(tooltip)
-	node.mouse_entered.connect(tooltip.show_for.bind(node))
-	node.mouse_exited.connect(tooltip.hide_tooltip)
-	return tooltip
+## Bind an M3Tooltip to any Control node. Call from _ready().
+static func setup_tooltip(node: Control, text: String, variant: int):
+	M3Tooltip.bind(node, text, variant)
 
 ## Hide native CheckBox/CheckButton icon visuals.
 ## Applies to both CheckBox and CheckButton derived nodes.

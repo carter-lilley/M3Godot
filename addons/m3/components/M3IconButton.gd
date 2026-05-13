@@ -205,12 +205,17 @@ func _update_theme():
 	var sel_hover_bg: Color = selected_colors.hover_bg
 	var sel_pressed_bg: Color = selected_colors.pressed_bg
 	
+	# Menu active override: show pressed state on normal/hover/focus
+	var display_bg = pressed_bg if _menu_active else bg
+	var display_hover = pressed_bg if _menu_active else hover_bg
+	var display_focus = pressed_bg if _menu_active else bg
+	
 	# Normal state
-	_configure_stylebox(_cached_style_normal, bg, radius, pad_h, border_w, border_c)
+	_configure_stylebox(_cached_style_normal, display_bg, radius, pad_h, border_w, border_c)
 	add_theme_stylebox_override("normal", _cached_style_normal)
 	
 	# Hover state
-	_configure_stylebox(_cached_style_hover, hover_bg, radius, pad_h, border_w, border_c)
+	_configure_stylebox(_cached_style_hover, display_hover, radius, pad_h, border_w, border_c)
 	add_theme_stylebox_override("hover", _cached_style_hover)
 	
 	# Pressed state
@@ -222,7 +227,7 @@ func _update_theme():
 	add_theme_stylebox_override("disabled", _cached_style_disabled)
 	
 	# Focus state
-	_configure_stylebox(_cached_style_focus, bg, radius, pad_h, 3, focus_border)
+	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, 3, focus_border)
 	add_theme_stylebox_override("focus", _cached_style_focus)
 	
 	# Hover pressed state (checked hover for toggles)
@@ -243,6 +248,8 @@ func _update_theme():
 	var current_text: Color
 	if disabled:
 		current_text = disabled_text
+	elif _menu_active:
+		current_text = sel_text
 	elif button_type == Type.TOGGLE:
 		var target_selected: bool = button_pressed != _is_pressing
 		current_text = sel_text if target_selected else text
@@ -358,6 +365,8 @@ func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {
 	var current_text: Color
 	if disabled:
 		current_text = colors.disabled_text
+	elif _menu_active:
+		current_text = selected_colors.text
 	elif button_type == Type.TOGGLE:
 		var target_selected: bool = button_pressed != _is_pressing
 		current_text = selected_colors.text if target_selected else colors.text
