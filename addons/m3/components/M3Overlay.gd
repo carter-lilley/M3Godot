@@ -29,7 +29,7 @@ signal dismissed
 # ============================================
 
 func _init():
-	layer = overlay_layer
+	pass
 
 func _ready():
 	visible = false
@@ -40,6 +40,8 @@ func _ready():
 
 ## Show this overlay, dismissing any existing overlay of the same type.
 func show_overlay():
+	# Sync CanvasLayer.layer with overlay_layer (subclasses set overlay_layer after _init())
+	layer = overlay_layer
 	# Dismiss previous of same type
 	if _active.has(overlay_type) and is_instance_valid(_active[overlay_type]) and _active[overlay_type] != self:
 		_active[overlay_type].dismiss()
@@ -56,8 +58,8 @@ func dismiss():
 	if overlay_layer >= _max_layer:
 		_max_layer = 0
 		for overlay in _active.values():
-			if is_instance_valid(overlay) and overlay.layer > _max_layer:
-				_max_layer = overlay.layer
+			if is_instance_valid(overlay) and overlay.overlay_layer > _max_layer:
+				_max_layer = overlay.overlay_layer
 	dismissed.emit()
 	visible = false
 	queue_free()
@@ -80,7 +82,11 @@ func _input(event: InputEvent):
 		return
 	if event.is_action_pressed("ui_cancel"):
 		# Only dismiss if we're the highest-layer active overlay
-		if self.layer < _max_layer:
+		if overlay_layer < _max_layer:
+			return
+		# Respect dismissible property if present (M3Dialog, M3Sheet, M3Snackbar)
+		var dismissible_val = get("dismissible")
+		if dismissible_val != null and dismissible_val == false:
 			return
 		get_viewport().set_input_as_handled()
 		dismiss()

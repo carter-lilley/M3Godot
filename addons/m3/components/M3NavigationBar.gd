@@ -159,8 +159,7 @@ func _rebuild_destinations():
 		item.custom_minimum_size.y = target_height
 		
 		# Connect signal
-		var idx = i
-		item.pressed.connect(func(): _on_destination_pressed(idx))
+		item.pressed.connect(_on_destination_pressed.bind(i))
 		
 		_destination_items.append(item)
 		_items_container.add_child(item)

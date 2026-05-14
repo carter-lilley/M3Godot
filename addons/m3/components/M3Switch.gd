@@ -44,6 +44,7 @@ var _track_sb: StyleBoxFlat
 var _thumb_sb: StyleBoxFlat
 var _focus_sb: StyleBoxFlat
 var _icon_node: FontIcon
+var _font_icon_template: FontIconSettings = null
 
 # ============================================
 # LIFECYCLE
@@ -64,11 +65,11 @@ func _ready():
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	# Track press state for visual sizing
-	button_down.connect(func(): _is_pressing = true; queue_redraw())
-	button_up.connect(func(): _is_pressing = false; queue_redraw())
-	toggled.connect(func(_v): queue_redraw())
-	mouse_entered.connect(func(): _hovered = true; queue_redraw())
-	mouse_exited.connect(func(): _hovered = false; queue_redraw())
+	button_down.connect(_on_button_down)
+	button_up.connect(_on_button_up)
+	toggled.connect(_on_toggled)
+	mouse_entered.connect(_on_mouse_entered)
+	mouse_exited.connect(_on_mouse_exited)
 	focus_entered.connect(queue_redraw)
 	focus_exited.connect(queue_redraw)
 	
@@ -81,6 +82,32 @@ func _exit_tree():
 
 func _get_minimum_size() -> Vector2:
 	return Vector2(M3Units.dp(TRACK_WIDTH), M3Units.dp(TRACK_HEIGHT))
+
+func _on_button_down():
+	_is_pressing = true
+	queue_redraw()
+
+func _on_button_up():
+	_is_pressing = false
+	queue_redraw()
+
+func _on_toggled(_v: bool):
+	queue_redraw()
+
+func _on_mouse_entered():
+	_hovered = true
+	queue_redraw()
+
+func _on_mouse_exited():
+	_hovered = false
+	queue_redraw()
+
+func _get_font_icon_settings() -> FontIconSettings:
+	if _font_icon_template == null:
+		_font_icon_template = FontIconSettings.new()
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+		_font_icon_template.icon_font = "MaterialIcons"
+	return _font_icon_template.duplicate()
 
 func _initialize_styleboxes():
 	_track_sb = StyleBoxFlat.new()
@@ -113,9 +140,7 @@ func _initialize_styleboxes():
 func _initialize_icon():
 	_icon_node = FontIcon.new()
 	_icon_node.name = "Icon"
-	_icon_node.icon_settings = FontIconSettings.new()
-	_icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-	_icon_node.icon_settings.icon_font = "MaterialIcons"
+	_icon_node.icon_settings = _get_font_icon_settings()
 	_icon_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_icon_node.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_icon_node.visible = false

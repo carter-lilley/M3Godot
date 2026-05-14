@@ -65,11 +65,26 @@ var _indet_end: float = 0.0
 var _cached_min_size: Vector2 = Vector2.ZERO
 var _cached_min_size_dirty: bool = true
 
+var _cap_stylebox: StyleBoxFlat
+var _endpoint_stylebox: StyleBoxFlat
+
 # ============================================
 # LIFECYCLE
 # ============================================
 
 func _ready():
+	_cap_stylebox = StyleBoxFlat.new()
+	_cap_stylebox.set_corner_radius_all(999)
+	_cap_stylebox.anti_aliasing = true
+	_cap_stylebox.anti_aliasing_size = 1.0
+	_cap_stylebox.set_border_width_all(0)
+	
+	_endpoint_stylebox = StyleBoxFlat.new()
+	_endpoint_stylebox.set_corner_radius_all(999)
+	_endpoint_stylebox.anti_aliasing = true
+	_endpoint_stylebox.anti_aliasing_size = 1.0
+	_endpoint_stylebox.set_border_width_all(0)
+	
 	refresh_theme()
 	set_process(indeterminate)
 
@@ -124,15 +139,17 @@ func _draw_linear():
 	
 	# Draw full track behind everything
 	draw_rect(Rect2(Vector2(radius, track_y), Vector2(rect_size_x - track_height, track_height)), _track_color, true)
-	var cap_radius = radius * 0.75
+	var cap_radius = radius * 0.80
 	var left_cap_pos = Vector2(radius, track_center_y)
 	var right_cap_pos = Vector2(rect_size_x - radius, track_center_y)
-	draw_circle(left_cap_pos, cap_radius, _track_color)
-	draw_circle(right_cap_pos, cap_radius, _track_color)
+	_cap_stylebox.bg_color = _track_color
+	draw_style_box(_cap_stylebox, Rect2(left_cap_pos.x - cap_radius, left_cap_pos.y - cap_radius, cap_radius * 2, cap_radius * 2))
+	draw_style_box(_cap_stylebox, Rect2(right_cap_pos.x - cap_radius, right_cap_pos.y - cap_radius, cap_radius * 2, cap_radius * 2))
 	
 	# Endpoint indicator (right side only, 4dp dot)
 	var endpoint_radius = M3Units.dp(2)
-	draw_circle(right_cap_pos, endpoint_radius, _endpoint_color)
+	_endpoint_stylebox.bg_color = _endpoint_color
+	draw_style_box(_endpoint_stylebox, Rect2(right_cap_pos.x - endpoint_radius, right_cap_pos.y - endpoint_radius, endpoint_radius * 2, endpoint_radius * 2))
 	
 	# Draw fill on top of track
 	if fill_width > 0:
@@ -140,9 +157,10 @@ func _draw_linear():
 		if fill_rect_width > 0:
 			draw_rect(Rect2(Vector2(start_x + radius, track_y), Vector2(fill_rect_width, track_height)), _indicator_color, true)
 		# Fill left cap
-		draw_circle(Vector2(start_x + radius, track_center_y), cap_radius, _indicator_color)
+		_cap_stylebox.bg_color = _indicator_color
+		draw_style_box(_cap_stylebox, Rect2(start_x + radius - cap_radius, track_center_y - cap_radius, cap_radius * 2, cap_radius * 2))
 		# Fill right cap (before gap) — always draw, just like track caps
-		draw_circle(Vector2(end_x, track_center_y), cap_radius, _indicator_color)
+		draw_style_box(_cap_stylebox, Rect2(end_x - cap_radius, track_center_y - cap_radius, cap_radius * 2, cap_radius * 2))
 
 func _draw_circular():
 	var diameter: float
@@ -189,8 +207,9 @@ func _draw_circular():
 			var end_point = center + Vector2(cos(end_angle - PI / 2.0), sin(end_angle - PI / 2.0)) * radius
 			
 			var cap_radius = stroke * 0.375
-			draw_circle(start_point, cap_radius, _indicator_color)
-			draw_circle(end_point, cap_radius, _indicator_color)
+			_cap_stylebox.bg_color = _indicator_color
+			draw_style_box(_cap_stylebox, Rect2(start_point.x - cap_radius, start_point.y - cap_radius, cap_radius * 2, cap_radius * 2))
+			draw_style_box(_cap_stylebox, Rect2(end_point.x - cap_radius, end_point.y - cap_radius, cap_radius * 2, cap_radius * 2))
 
 func _draw_thick_arc(center: Vector2, radius: float, start_angle: float, end_angle: float, color: Color, width: float):
 	# Godot angles: 0 = right, positive = counter-clockwise

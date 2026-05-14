@@ -2,6 +2,8 @@
 class_name M3NavigationDestination
 extends M3Button
 
+static var _shared_empty_stylebox: StyleBoxEmpty = StyleBoxEmpty.new()
+
 ## Material 3 Navigation Destination
 ## Extends M3Button with navigation-specific layout.
 ## Draws pill-shaped active and hover indicators via _draw().
@@ -112,7 +114,7 @@ func _ready():
 	focus_exited.connect(queue_redraw)
 	
 	# Clear native focus stylebox so focus ring is drawn only around the pill
-	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	add_theme_stylebox_override("focus", _shared_empty_stylebox)
 
 # ============================================
 # OVERRIDES
@@ -125,7 +127,7 @@ func _update_theme():
 	super._update_theme()
 	# Clear native focus stylebox after parent sets it
 	# so focus ring is drawn only around the pill in _draw()
-	add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	add_theme_stylebox_override("focus", _shared_empty_stylebox)
 
 func _get_variant_colors(selected: bool) -> Dictionary:
 	var cache_key = str(selected) + "_" + str(disabled)

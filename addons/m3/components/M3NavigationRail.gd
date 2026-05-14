@@ -287,8 +287,7 @@ func _rebuild_destinations():
 			_sectioned_items.append(item)
 			item.visible = expanded
 		
-		var idx = item_idx
-		item.pressed.connect(func(): _on_destination_pressed(idx))
+		item.pressed.connect(_on_destination_pressed.bind(item_idx))
 		
 		_destination_items.append(item)
 		_items_area.add_child(item)

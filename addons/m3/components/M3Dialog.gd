@@ -93,6 +93,12 @@ var _bottom_actions: Panel
 
 var _actions: Array[M3Button] = []
 var _ready_called: bool = false
+var _cached_fonts: Dictionary = {}
+var _font_icon_template: FontIconSettings = null
+var _cached_divider_sb: StyleBoxLine = null
+var _cached_bg_sb: StyleBoxFlat = null
+var _cached_top_bar_sb: StyleBoxFlat = null
+var _cached_bottom_actions_sb: StyleBoxFlat = null
 
 # ============================================
 # PUBLIC API
@@ -137,6 +143,7 @@ func _init():
 
 func _ready():
 	super._ready()
+	_cached_fonts = M3Theme.load_fonts()
 	_update_appearance()
 	_update_text()
 	_update_hero_icon()
@@ -174,9 +181,7 @@ func _build_basic_layout():
 	_vbox.add_theme_constant_override("separation", 0)
 	
 	_hero_icon = FontIcon.new()
-	_hero_icon.icon_settings = FontIconSettings.new()
-	_hero_icon.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-	_hero_icon.icon_settings.icon_font = "MaterialIcons"
+	_hero_icon.icon_settings = _get_font_icon_settings()
 	_hero_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hero_icon.visible = false
 	_vbox.add_child(_hero_icon)
@@ -272,9 +277,7 @@ func _build_fullscreen_layout():
 	scroll_margin.add_child(_scroll_content)
 	
 	_hero_icon = FontIcon.new()
-	_hero_icon.icon_settings = FontIconSettings.new()
-	_hero_icon.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-	_hero_icon.icon_settings.icon_font = "MaterialIcons"
+	_hero_icon.icon_settings = _get_font_icon_settings()
 	_hero_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hero_icon.visible = false
 	_scroll_content.add_child(_hero_icon)
@@ -370,8 +373,17 @@ func _position_dialog():
 # APPEARANCE
 # ============================================
 
+func _get_font_icon_settings() -> FontIconSettings:
+	if _font_icon_template == null:
+		_font_icon_template = FontIconSettings.new()
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+		_font_icon_template.icon_font = "MaterialIcons"
+	return _font_icon_template.duplicate()
+
 func _update_appearance():
-	var fonts = M3Theme.load_fonts()
+	if _cached_fonts.is_empty():
+		_cached_fonts = M3Theme.load_fonts()
+	var fonts = _cached_fonts
 	
 	if dialog_variant == Variant.BASIC:
 		var bg = M3Theme.get_surface_container()
@@ -387,24 +399,34 @@ func _update_appearance():
 		_style_label(_title_label, fonts["regular"], M3Units.dp(24), M3Theme.get_on_surface())
 		_style_label(_body_label, fonts["regular"], M3Units.dp(14), M3Theme.get_on_surface_variant())
 		
-		var div_style = StyleBoxLine.new()
-		div_style.color = M3Theme.get_outline()
-		div_style.thickness = 1
-		_divider.add_theme_stylebox_override("separator", div_style)
+		if _cached_divider_sb == null:
+			_cached_divider_sb = StyleBoxLine.new()
+		_cached_divider_sb.color = M3Theme.get_outline()
+		_cached_divider_sb.thickness = 1
+		_divider.add_theme_stylebox_override("separator", _cached_divider_sb)
 		
 		if _hero_icon and _hero_icon.visible:
 			_hero_icon.icon_settings.icon_color = M3Theme.get_secondary()
 		
 	else:
+		if _cached_bg_sb == null:
+			_cached_bg_sb = StyleBoxFlat.new()
+		_cached_bg_sb.bg_color = M3Theme.get_surface()
 		for child in _dialog_container.get_children():
 			if child.name == "FullscreenBackground":
-				child.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
+				child.add_theme_stylebox_override("panel", _cached_bg_sb)
 				break
 		
-		_top_bar.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
+		if _cached_top_bar_sb == null:
+			_cached_top_bar_sb = StyleBoxFlat.new()
+		_cached_top_bar_sb.bg_color = M3Theme.get_surface()
+		_top_bar.add_theme_stylebox_override("panel", _cached_top_bar_sb)
 		_style_label(_top_bar_title, fonts["regular"], M3Units.dp(22), M3Theme.get_on_surface())
 		
-		_bottom_actions.add_theme_stylebox_override("panel", M3Theme.make_flat(M3Theme.get_surface()))
+		if _cached_bottom_actions_sb == null:
+			_cached_bottom_actions_sb = StyleBoxFlat.new()
+		_cached_bottom_actions_sb.bg_color = M3Theme.get_surface()
+		_bottom_actions.add_theme_stylebox_override("panel", _cached_bottom_actions_sb)
 		
 		_style_label(_title_label, fonts["regular"], M3Units.dp(24), M3Theme.get_on_surface())
 		_style_label(_body_label, fonts["regular"], M3Units.dp(14), M3Theme.get_on_surface_variant())

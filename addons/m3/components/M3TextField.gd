@@ -140,6 +140,8 @@ var _cached_empty_normal: StyleBoxEmpty
 var _cached_empty_focus: StyleBoxEmpty
 var _cached_empty_readonly: StyleBoxEmpty
 var _updating_layout: bool = false
+var _cached_fonts: Dictionary = {}
+var _font_icon_template: FontIconSettings = null
 
 # ============================================
 # LIFECYCLE
@@ -152,6 +154,7 @@ func _init():
 
 func _ready():
 	clip_contents = false
+	_cached_fonts = M3Theme.load_fonts()
 	_initialize_styleboxes()
 	_create_visual_children()
 	_update_icons()
@@ -221,13 +224,13 @@ func _create_visual_children():
 	
 	# Create icons
 	_leading_icon_node = FontIcon.new()
-	_leading_icon_node.icon_settings = FontIconSettings.new()
+	_leading_icon_node.icon_settings = _get_font_icon_settings()
 	_leading_icon_node.visible = false
 	_leading_icon_node.z_index = 1
 	_leading_icon_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	_trailing_icon_node = FontIcon.new()
-	_trailing_icon_node.icon_settings = FontIconSettings.new()
+	_trailing_icon_node.icon_settings = _get_font_icon_settings()
 	_trailing_icon_node.visible = false
 	_trailing_icon_node.z_index = 1
 	_trailing_icon_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -400,9 +403,16 @@ func _update_bg_panel():
 # UPDATES
 # ============================================
 
+func _get_font_icon_settings() -> FontIconSettings:
+	if _font_icon_template == null:
+		_font_icon_template = FontIconSettings.new()
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+		_font_icon_template.icon_font = "MaterialIcons"
+	return _font_icon_template.duplicate()
+
 func _update_theme():
 	var has_error = not error_text.is_empty()
-	var fonts = M3Theme.load_fonts()
+	var fonts = _cached_fonts
 	
 	# Input text styling (native LineEdit)
 	var input_color: Color

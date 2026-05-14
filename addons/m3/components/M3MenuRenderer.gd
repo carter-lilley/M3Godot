@@ -3,6 +3,8 @@ extends Control
 
 const M3MenuItem = preload("res://addons/m3/components/M3MenuItem.gd")
 
+static var _shared_empty_stylebox: StyleBoxEmpty = StyleBoxEmpty.new()
+
 ## Material 3 Menu Renderer
 ## Visual popup layer for M3Menu. Lazy-loaded when popup() is called.
 ## Handles rendering, input, keyboard navigation, and dismissal.
@@ -63,6 +65,9 @@ var _multi_select: bool = false
 var _submenu_mode: bool = false
 var _suppress_submenu: bool = false
 var _forced_focus_index: int = -1
+var _focused_item_index: int = -1
+var _font_icon_template: FontIconSettings = null
+var _cached_fonts: Dictionary = {}
 
 # ============================================
 # LIFECYCLE
@@ -130,6 +135,7 @@ func _update_appearance():
 
 func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = ColorVariant.STANDARD, alignment: MenuAlignment = MenuAlignment.START, auto_focus_first: bool = true, min_width: float = 0.0, multi_select: bool = false, submenu_mode: bool = false):
 	_ensure_visuals()
+	_cached_fonts = M3Theme.load_fonts()
 	
 	_menu_items = items.duplicate()
 	_color_variant = variant
@@ -174,13 +180,14 @@ func _clear_items():
 	for node in _item_nodes:
 		node.queue_free()
 	_item_nodes.clear()
+	_focused_item_index = -1
 	if _vbox == null:
 		return
 	for child in _vbox.get_children():
 		child.queue_free()
 
 func _build_items():
-	var fonts = M3Theme.load_fonts()
+	var fonts = _cached_fonts
 	
 	for i in range(_menu_items.size()):
 		var item = _menu_items[i]
@@ -198,6 +205,13 @@ func _create_item_node(item: M3MenuItem, index: int, fonts: Dictionary) -> Contr
 			return _create_two_line_node(item, index, fonts)
 		_:
 			return _create_normal_node(item, index, fonts)
+
+func _get_font_icon_settings() -> FontIconSettings:
+	if _font_icon_template == null:
+		_font_icon_template = FontIconSettings.new()
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+		_font_icon_template.icon_font = "MaterialIcons"
+	return _font_icon_template.duplicate()
 
 func _create_separator_node() -> Control:
 	var container = Control.new()
@@ -217,11 +231,12 @@ func _create_separator_node() -> Control:
 	line.size = Vector2(100, sep_height)  # Temporary width, updated on resize
 	
 	# Use resized signal to update line width
-	container.resized.connect(func():
-		line.size = Vector2(container.size.x - pad_h * 2, sep_height)
-	)
+	container.resized.connect(_on_separator_resized.bind(container, line, pad_h, sep_height))
 	
 	return container
+
+func _on_separator_resized(container: Control, line: ColorRect, pad_h: float, sep_height: float):
+	line.size = Vector2(container.size.x - pad_h * 2, sep_height)
 
 func _create_section_label_node(item: M3MenuItem, fonts: Dictionary) -> Control:
 	var container = Control.new()
@@ -239,11 +254,12 @@ func _create_section_label_node(item: M3MenuItem, fonts: Dictionary) -> Control:
 	label.position = Vector2(M3Units.dp(ITEM_PADDING_H), top_pad)
 	container.add_child(label)
 	
-	container.resized.connect(func():
-		label.size = Vector2(container.size.x - M3Units.dp(ITEM_PADDING_H) * 2, M3Units.dp(16))
-	)
+	container.resized.connect(_on_section_label_resized.bind(container, label))
 	
 	return container
+
+func _on_section_label_resized(container: Control, label: Label):
+	label.size = Vector2(container.size.x - M3Units.dp(ITEM_PADDING_H) * 2, M3Units.dp(16))
 
 func _create_normal_node(item: M3MenuItem, index: int, fonts: Dictionary) -> Control:
 	var height = M3Units.dp(ITEM_HEIGHT)
@@ -258,9 +274,7 @@ func _create_normal_node(item: M3MenuItem, index: int, fonts: Dictionary) -> Con
 	
 	# Icon or checkmark (always reserve space for alignment)
 	var icon_node = FontIcon.new()
-	icon_node.icon_settings = FontIconSettings.new()
-	icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-	icon_node.icon_settings.icon_font = "MaterialIcons"
+	icon_node.icon_settings = _get_font_icon_settings()
 	icon_node.custom_minimum_size = Vector2(M3Units.dp(ICON_SIZE), M3Units.dp(ICON_SIZE))
 	icon_node.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	icon_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -315,9 +329,7 @@ func _create_normal_node(item: M3MenuItem, index: int, fonts: Dictionary) -> Con
 	var show_trailing = not item.trailing_icon.is_empty() or item.submenu != null
 	if show_trailing:
 		var trailing_icon_node = FontIcon.new()
-		trailing_icon_node.icon_settings = FontIconSettings.new()
-		trailing_icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-		trailing_icon_node.icon_settings.icon_font = "MaterialIcons"
+		trailing_icon_node.icon_settings = _get_font_icon_settings()
 		trailing_icon_node.icon_settings.icon_name = item.trailing_icon if not item.trailing_icon.is_empty() else "menu-right"
 		trailing_icon_node.icon_settings.icon_color = _get_secondary_text_color()
 		trailing_icon_node.custom_minimum_size = Vector2(M3Units.dp(ICON_SIZE), M3Units.dp(ICON_SIZE))
@@ -328,11 +340,12 @@ func _create_normal_node(item: M3MenuItem, index: int, fonts: Dictionary) -> Con
 		node.set_meta("m3_menu_trailing_icon", trailing_icon_node)
 		node.set_meta("m3_menu_has_submenu", item.submenu != null)
 	
-	node.resized.connect(func():
-		hbox.size = Vector2(node.size.x - M3Units.dp(ITEM_PADDING_H) * 2, height)
-	)
+	node.resized.connect(_on_node_resized.bind(node, hbox, height))
 	
 	return node
+
+func _on_node_resized(node: Control, hbox: HBoxContainer, height: float):
+	hbox.size = Vector2(node.size.x - M3Units.dp(ITEM_PADDING_H) * 2, height)
 
 func _create_two_line_node(item: M3MenuItem, index: int, fonts: Dictionary) -> Control:
 	var height = M3Units.dp(ITEM_HEIGHT_TWO_LINE)
@@ -347,9 +360,7 @@ func _create_two_line_node(item: M3MenuItem, index: int, fonts: Dictionary) -> C
 	
 	# Icon (always reserve space for alignment)
 	var icon_node = FontIcon.new()
-	icon_node.icon_settings = FontIconSettings.new()
-	icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-	icon_node.icon_settings.icon_font = "MaterialIcons"
+	icon_node.icon_settings = _get_font_icon_settings()
 	if not item.icon.is_empty():
 		icon_node.icon_settings.icon_name = item.icon
 		icon_node.icon_settings.icon_color = _get_icon_color()
@@ -410,9 +421,7 @@ func _create_two_line_node(item: M3MenuItem, index: int, fonts: Dictionary) -> C
 	var show_trailing_2l = not item.trailing_icon.is_empty() or item.submenu != null
 	if show_trailing_2l:
 		var trailing_icon_node = FontIcon.new()
-		trailing_icon_node.icon_settings = FontIconSettings.new()
-		trailing_icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
-		trailing_icon_node.icon_settings.icon_font = "MaterialIcons"
+		trailing_icon_node.icon_settings = _get_font_icon_settings()
 		trailing_icon_node.icon_settings.icon_name = item.trailing_icon if not item.trailing_icon.is_empty() else "menu-right"
 		trailing_icon_node.icon_settings.icon_color = _get_secondary_text_color()
 		trailing_icon_node.custom_minimum_size = Vector2(M3Units.dp(ICON_SIZE), M3Units.dp(ICON_SIZE))
@@ -423,9 +432,7 @@ func _create_two_line_node(item: M3MenuItem, index: int, fonts: Dictionary) -> C
 		node.set_meta("m3_menu_trailing_icon", trailing_icon_node)
 		node.set_meta("m3_menu_has_submenu", item.submenu != null)
 	
-	node.resized.connect(func():
-		hbox.size = Vector2(node.size.x - M3Units.dp(ITEM_PADDING_H) * 2, height)
-	)
+	node.resized.connect(_on_node_resized.bind(node, hbox, height))
 	
 	return node
 
@@ -439,12 +446,11 @@ func _create_interactable_node(item: M3MenuItem, index: int, height: float) -> B
 	
 	# Suppress native Button visuals; we draw our own overlay
 	node.flat = true
-	var empty = StyleBoxEmpty.new()
-	node.add_theme_stylebox_override("normal", empty)
-	node.add_theme_stylebox_override("pressed", empty)
-	node.add_theme_stylebox_override("hover", empty)
-	node.add_theme_stylebox_override("disabled", empty)
-	node.add_theme_stylebox_override("focus", empty)
+	node.add_theme_stylebox_override("normal", _shared_empty_stylebox)
+	node.add_theme_stylebox_override("pressed", _shared_empty_stylebox)
+	node.add_theme_stylebox_override("hover", _shared_empty_stylebox)
+	node.add_theme_stylebox_override("disabled", _shared_empty_stylebox)
+	node.add_theme_stylebox_override("focus", _shared_empty_stylebox)
 	
 	# Hover/selected overlay - Panel with rounded StyleBoxFlat, inset 4dp from edges
 	var overlay = Panel.new()
@@ -475,6 +481,7 @@ func _create_interactable_node(item: M3MenuItem, index: int, height: float) -> B
 	if not item.disabled:
 		node.pressed.connect(_activate_item.bind(index))
 		node.focus_entered.connect(_on_item_focus_entered.bind(index))
+		node.focus_exited.connect(_on_item_focus_exited.bind(index))
 		node.mouse_entered.connect(_on_item_mouse_entered.bind(index))
 	
 	return node
@@ -538,7 +545,7 @@ func _calculate_size_and_position():
 	
 	# Calculate required width
 	var max_content_width = 0.0
-	var fonts = M3Theme.load_fonts()
+	var fonts = _cached_fonts
 	
 	for item in _menu_items:
 		var item_width = M3Units.dp(ITEM_PADDING_H) * 2
@@ -698,19 +705,15 @@ func _input(event: InputEvent):
 	
 	# Right arrow opens submenu for the focused item
 	if event.is_action_pressed("ui_right"):
-		var focused = get_viewport().gui_get_focus_owner()
-		if focused != null:
-			for i in range(_item_nodes.size()):
-				if _item_nodes[i] == focused:
-					if i >= 0 and i < _menu_items.size() and _menu_items[i].submenu != null:
-						submenu_requested.emit(i)
-						get_viewport().set_input_as_handled()
-						return
-					break
+		var focused_idx = _focused_item_index
+		if focused_idx >= 0 and focused_idx < _menu_items.size() and _menu_items[focused_idx].submenu != null:
+			submenu_requested.emit(focused_idx)
+			get_viewport().set_input_as_handled()
+			return
 	
 	# Edge navigation: up/down close at vertical edges; left/right always close
 	# (vertical menus have no horizontal focus movement, so left/right are universal close)
-	var focused_idx = _get_focused_item_index()
+	var focused_idx = _focused_item_index
 	if focused_idx < 0:
 		return
 	var first_idx = _get_first_focusable_index()
@@ -757,8 +760,20 @@ func _on_item_mouse_entered(index: int):
 		if not node.has_focus():
 			node.grab_focus()
 
+func _on_item_focus_exited(index: int):
+	if _focused_item_index == index:
+		_focused_item_index = -1
+
 func _on_item_focus_entered(index: int):
-	_update_item_visuals()
+	# Incremental update: only old and new items
+	var old_focused = _focused_item_index
+	if old_focused >= 0 and old_focused != index and old_focused < _item_nodes.size():
+		var prev_focused = old_focused == _forced_focus_index
+		_update_item_visual(old_focused, prev_focused)
+	
+	_update_item_visual(index, true)
+	_focused_item_index = index
+	
 	focus_changed.emit(index)
 	if not _suppress_submenu and index >= 0 and index < _menu_items.size():
 		var item = _menu_items[index]
@@ -802,76 +817,83 @@ func _activate_item(index: int):
 # VISUAL UPDATES
 # ============================================
 
+func _update_item_visual(index: int, is_focused: bool):
+	if index < 0 or index >= _item_nodes.size():
+		return
+	
+	var node = _item_nodes[index]
+	var item = _menu_items[index] if index < _menu_items.size() else null
+	
+	# Direct reference from metadata (avoid child iteration)
+	if node.has_meta("m3_menu_overlay"):
+		var overlay = node.get_meta("m3_menu_overlay") as Panel
+		var sb = node.get_meta("m3_menu_overlay_sb") as StyleBoxFlat
+		if is_focused:
+			if sb:
+				sb.bg_color = _get_selected_bg_color()
+			overlay.visible = true
+		else:
+			overlay.visible = false
+	
+	# Update text/icon colors for selected vs unselected state
+	if is_focused:
+		# Selected: use contrasting color on colored background
+		if node.has_meta("m3_menu_label"):
+			var label = node.get_meta("m3_menu_label") as Label
+			if label:
+				label.add_theme_color_override("font_color", _get_selected_text_color())
+		if node.has_meta("m3_menu_secondary"):
+			var secondary = node.get_meta("m3_menu_secondary") as Label
+			if secondary:
+				secondary.add_theme_color_override("font_color", _get_selected_text_color())
+		if node.has_meta("m3_menu_shortcut"):
+			var shortcut = node.get_meta("m3_menu_shortcut") as Label
+			if shortcut:
+				shortcut.add_theme_color_override("font_color", _get_selected_text_color())
+		if node.has_meta("m3_menu_icon"):
+			var icon_node = node.get_meta("m3_menu_icon") as FontIcon
+			if icon_node and icon_node.icon_settings:
+				icon_node.icon_settings.icon_color = _get_selected_text_color()
+		if node.has_meta("m3_menu_trailing_icon"):
+			var trailing = node.get_meta("m3_menu_trailing_icon") as FontIcon
+			if trailing and trailing.icon_settings:
+				trailing.icon_settings.icon_color = _get_selected_text_color()
+	else:
+		# Unselected: restore original colors
+		var disabled = item.disabled if item else false
+		if node.has_meta("m3_menu_label"):
+			var label = node.get_meta("m3_menu_label") as Label
+			if label:
+				label.add_theme_color_override("font_color", _get_primary_text_color() if not disabled else _get_disabled_text_color())
+		if node.has_meta("m3_menu_secondary"):
+			var secondary = node.get_meta("m3_menu_secondary") as Label
+			if secondary:
+				secondary.add_theme_color_override("font_color", _get_secondary_text_color())
+		if node.has_meta("m3_menu_shortcut"):
+			var shortcut = node.get_meta("m3_menu_shortcut") as Label
+			if shortcut:
+				shortcut.add_theme_color_override("font_color", _get_secondary_text_color())
+		if node.has_meta("m3_menu_icon"):
+			var icon_node = node.get_meta("m3_menu_icon") as FontIcon
+			if icon_node and icon_node.icon_settings:
+				if item and item.checkable and item.checked:
+					icon_node.icon_settings.icon_color = _get_primary_text_color()
+				elif item and item.checkable and not item.checked:
+					icon_node.icon_settings.icon_color = Color.TRANSPARENT
+				elif item and not item.icon.is_empty():
+					icon_node.icon_settings.icon_color = _get_icon_color()
+				else:
+					icon_node.icon_settings.icon_color = Color.TRANSPARENT
+		if node.has_meta("m3_menu_trailing_icon"):
+			var trailing = node.get_meta("m3_menu_trailing_icon") as FontIcon
+			if trailing and trailing.icon_settings:
+				trailing.icon_settings.icon_color = _get_secondary_text_color()
+
 func _update_item_visuals():
 	for i in range(_item_nodes.size()):
 		var node = _item_nodes[i]
 		var is_focused = node.has_focus() or i == _forced_focus_index
-		var item = _menu_items[i] if i < _menu_items.size() else null
-		
-		# Direct reference from metadata (avoid child iteration)
-		if node.has_meta("m3_menu_overlay"):
-			var overlay = node.get_meta("m3_menu_overlay") as Panel
-			var sb = node.get_meta("m3_menu_overlay_sb") as StyleBoxFlat
-			if is_focused:
-				if sb:
-					sb.bg_color = _get_selected_bg_color()
-				overlay.visible = true
-			else:
-				overlay.visible = false
-		
-		# Update text/icon colors for selected vs unselected state
-		if is_focused:
-			# Selected: use contrasting color on colored background
-			if node.has_meta("m3_menu_label"):
-				var label = node.get_meta("m3_menu_label") as Label
-				if label:
-					label.add_theme_color_override("font_color", _get_selected_text_color())
-			if node.has_meta("m3_menu_secondary"):
-				var secondary = node.get_meta("m3_menu_secondary") as Label
-				if secondary:
-					secondary.add_theme_color_override("font_color", _get_selected_text_color())
-			if node.has_meta("m3_menu_shortcut"):
-				var shortcut = node.get_meta("m3_menu_shortcut") as Label
-				if shortcut:
-					shortcut.add_theme_color_override("font_color", _get_selected_text_color())
-			if node.has_meta("m3_menu_icon"):
-				var icon_node = node.get_meta("m3_menu_icon") as FontIcon
-				if icon_node and icon_node.icon_settings:
-					icon_node.icon_settings.icon_color = _get_selected_text_color()
-			if node.has_meta("m3_menu_trailing_icon"):
-				var trailing = node.get_meta("m3_menu_trailing_icon") as FontIcon
-				if trailing and trailing.icon_settings:
-					trailing.icon_settings.icon_color = _get_selected_text_color()
-		else:
-			# Unselected: restore original colors
-			var disabled = item.disabled if item else false
-			if node.has_meta("m3_menu_label"):
-				var label = node.get_meta("m3_menu_label") as Label
-				if label:
-					label.add_theme_color_override("font_color", _get_primary_text_color() if not disabled else _get_disabled_text_color())
-			if node.has_meta("m3_menu_secondary"):
-				var secondary = node.get_meta("m3_menu_secondary") as Label
-				if secondary:
-					secondary.add_theme_color_override("font_color", _get_secondary_text_color())
-			if node.has_meta("m3_menu_shortcut"):
-				var shortcut = node.get_meta("m3_menu_shortcut") as Label
-				if shortcut:
-					shortcut.add_theme_color_override("font_color", _get_secondary_text_color())
-			if node.has_meta("m3_menu_icon"):
-				var icon_node = node.get_meta("m3_menu_icon") as FontIcon
-				if icon_node and icon_node.icon_settings:
-					if item and item.checkable and item.checked:
-						icon_node.icon_settings.icon_color = _get_primary_text_color()
-					elif item and item.checkable and not item.checked:
-						icon_node.icon_settings.icon_color = Color.TRANSPARENT
-					elif item and not item.icon.is_empty():
-						icon_node.icon_settings.icon_color = _get_icon_color()
-					else:
-						icon_node.icon_settings.icon_color = Color.TRANSPARENT
-			if node.has_meta("m3_menu_trailing_icon"):
-				var trailing = node.get_meta("m3_menu_trailing_icon") as FontIcon
-				if trailing and trailing.icon_settings:
-					trailing.icon_settings.icon_color = _get_secondary_text_color()
+		_update_item_visual(i, is_focused)
 
 func _update_item_checkmark(index: int):
 	if index < 0 or index >= _item_nodes.size():
@@ -911,8 +933,17 @@ func grab_item_focus(index: int):
 			node.grab_focus()
 
 func set_forced_focus_index(index: int):
+	var old_forced = _forced_focus_index
 	_forced_focus_index = index
-	_update_item_visuals()
+	
+	# Update old forced item to its actual focus state
+	if old_forced >= 0 and old_forced != index and old_forced < _item_nodes.size():
+		var node = _item_nodes[old_forced]
+		_update_item_visual(old_forced, node.has_focus())
+	
+	# Update new forced item
+	if index >= 0 and index != old_forced and index < _item_nodes.size():
+		_update_item_visual(index, true)
 
 func refresh_theme():
 	_cache_variant_colors()

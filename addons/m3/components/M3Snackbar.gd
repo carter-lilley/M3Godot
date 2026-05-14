@@ -34,6 +34,7 @@ var _action_button: M3Button
 var _dismiss_button: M3IconButton
 var _timer: Timer
 var _hovered: bool = false
+var _cached_fonts: Dictionary = {}
 
 var message: String = ""
 var action_text: String = ""
@@ -51,6 +52,7 @@ func _init():
 
 func _ready():
 	super._ready()
+	_cached_fonts = M3Theme.load_fonts()
 	_position_snackbar()
 	_setup_timer()
 	_update_appearance()
@@ -125,7 +127,7 @@ func _position_snackbar():
 	)
 
 func _update_appearance():
-	var fonts = M3Theme.load_fonts()
+	var fonts = _cached_fonts
 	
 	var bg = M3Theme.get_inverse_surface()
 	var sb = M3Theme.make_shadow(bg, M3Units.dpi(CORNER_RADIUS), 6, Vector2(0, 3), Color(0, 0, 0, 0.20))

@@ -163,8 +163,6 @@ func _animate_out(callback: Callable):
 # ============================================
 
 func _input(event: InputEvent):
-	if not dismissible and event.is_action_pressed("ui_cancel"):
-		return
 	super._input(event)
 
 func _on_scrim_input(event: InputEvent):

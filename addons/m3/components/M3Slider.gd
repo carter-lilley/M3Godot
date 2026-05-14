@@ -199,6 +199,9 @@ var _cached_perp_center: float
 # Cached stop positions
 var _cached_stops: Array[float] = []
 var _cached_stops_valid: bool = false
+var _font_icon_template: FontIconSettings = null
+var _focus_entered_callable: Callable
+var _focus_exited_callable: Callable
 
 # ============================================
 # M3 EXPRESSIVE SIZE SPECS (all values in dp)
@@ -324,6 +327,17 @@ func _initialize_caches():
 	
 	# Initialize color cache
 	_invalidate_color_cache()
+	
+	# Pre-create bound callables for signal management
+	_focus_entered_callable = _on_focus_changed.bind(true)
+	_focus_exited_callable = _on_focus_changed.bind(false)
+
+func _get_font_icon_settings() -> FontIconSettings:
+	if _font_icon_template == null:
+		_font_icon_template = FontIconSettings.new()
+		_font_icon_template.outline_color = Color.TRANSPARENT
+		_font_icon_template.shadow_color = Color.TRANSPARENT
+	return _font_icon_template.duplicate()
 
 func _create_all_children():
 	# Create all nodes
@@ -367,11 +381,11 @@ func _create_all_children():
 	
 	# Icons
 	_start_icon.visible = false
-	_start_icon.icon_settings = FontIconSettings.new()
+	_start_icon.icon_settings = _get_font_icon_settings()
 	_start_icon.z_index = 3
 	
 	_end_icon.visible = false
-	_end_icon.icon_settings = FontIconSettings.new()
+	_end_icon.icon_settings = _get_font_icon_settings()
 	_end_icon.z_index = 3
 	
 	# ============================================
@@ -572,16 +586,16 @@ func _connect_signals():
 		_slider.drag_started.disconnect(_on_drag_started)
 	if _slider.drag_ended.is_connected(_on_drag_ended):
 		_slider.drag_ended.disconnect(_on_drag_ended)
-	if _slider.focus_entered.is_connected(_on_focus_changed.bind(true)):
-		_slider.focus_entered.disconnect(_on_focus_changed.bind(true))
-	if _slider.focus_exited.is_connected(_on_focus_changed.bind(false)):
-		_slider.focus_exited.disconnect(_on_focus_changed.bind(false))
+	if _slider.focus_entered.is_connected(_focus_entered_callable):
+		_slider.focus_entered.disconnect(_focus_entered_callable)
+	if _slider.focus_exited.is_connected(_focus_exited_callable):
+		_slider.focus_exited.disconnect(_focus_exited_callable)
 	
 	_slider.value_changed.connect(_on_value_changed)
 	_slider.drag_started.connect(_on_drag_started)
 	_slider.drag_ended.connect(_on_drag_ended)
-	_slider.focus_entered.connect(_on_focus_changed.bind(true))
-	_slider.focus_exited.connect(_on_focus_changed.bind(false))
+	_slider.focus_entered.connect(_focus_entered_callable)
+	_slider.focus_exited.connect(_focus_exited_callable)
 
 func _on_focus_changed(has_focus: bool):
 	_is_focused = has_focus
