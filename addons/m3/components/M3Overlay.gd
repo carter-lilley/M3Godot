@@ -9,6 +9,7 @@ extends CanvasLayer
 # ============================================
 
 static var _active: Dictionary = {}
+static var _max_layer: int = 0
 
 # ============================================
 # EXPORTS
@@ -43,12 +44,20 @@ func show_overlay():
 	if _active.has(overlay_type) and is_instance_valid(_active[overlay_type]) and _active[overlay_type] != self:
 		_active[overlay_type].dismiss()
 	_active[overlay_type] = self
+	if overlay_layer > _max_layer:
+		_max_layer = overlay_layer
 	visible = true
 
 ## Dismiss this overlay and clean up.
 func dismiss():
 	if _active.get(overlay_type) == self:
 		_active.erase(overlay_type)
+	# Recalculate max layer if we were the highest
+	if overlay_layer >= _max_layer:
+		_max_layer = 0
+		for overlay in _active.values():
+			if is_instance_valid(overlay) and overlay.layer > _max_layer:
+				_max_layer = overlay.layer
 	dismissed.emit()
 	visible = false
 	queue_free()
@@ -71,9 +80,7 @@ func _input(event: InputEvent):
 		return
 	if event.is_action_pressed("ui_cancel"):
 		# Only dismiss if we're the highest-layer active overlay
-		for type in _active.keys():
-			var other = _active[type]
-			if is_instance_valid(other) and other != self and other.visible and other.layer > self.layer:
-				return
+		if self.layer < _max_layer:
+			return
 		get_viewport().set_input_as_handled()
 		dismiss()

@@ -50,7 +50,8 @@ func _build_sheet_layout():
 	# Scrim
 	_scrim = ColorRect.new()
 	_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_scrim.color = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, 0.32)
+	var on_surf = M3Theme.get_on_surface()
+	_scrim.color = Color(on_surf.r, on_surf.g, on_surf.b, 0.32)
 	_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_scrim.gui_input.connect(_on_scrim_input)
 	_scrim.visible = false
@@ -111,8 +112,7 @@ func _position_sheet():
 	if not _sheet_container:
 		return
 	
-	var viewport = get_viewport()
-	var screen_size = viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+	var screen_size = _get_screen_size()
 	var height_px = M3Units.dp(peek_height)
 	var width_px = _get_sheet_width(screen_size.x)
 	var x_pos = (screen_size.x - width_px) / 2.0
@@ -123,27 +123,38 @@ func _position_sheet():
 	
 	# Modal variant: rounded top corners
 	if sheet_variant == Variant.MODAL:
-		var style = _sheet_container.get_theme_stylebox("panel")
-		if style is StyleBoxFlat:
-			style.corner_radius_top_left = M3Units.dp(CORNER_RADIUS)
-			style.corner_radius_top_right = M3Units.dp(CORNER_RADIUS)
-			style.corner_radius_bottom_left = 0
-			style.corner_radius_bottom_right = 0
+		_update_corner_radii()
+
+func _update_appearance():
+	super._update_appearance()
+	if sheet_variant == Variant.MODAL and _sheet_container:
+		_update_corner_radii()
+
+func _update_corner_radii():
+	var style = _sheet_container.get_theme_stylebox("panel")
+	if style is StyleBoxFlat:
+		style.corner_radius_top_left = M3Units.dp(CORNER_RADIUS)
+		style.corner_radius_top_right = M3Units.dp(CORNER_RADIUS)
+		style.corner_radius_bottom_left = 0
+		style.corner_radius_bottom_right = 0
 
 func _update_drag_handle():
 	if not _drag_handle:
 		return
 	_drag_handle.visible = show_drag_handle
 	if show_drag_handle:
-		var style = StyleBoxFlat.new()
+		var style = _drag_handle.get_theme_stylebox("panel")
+		if not style is StyleBoxFlat:
+			style = StyleBoxFlat.new()
+			style.set_corner_radius_all(int(M3Units.dp(DRAG_HANDLE_HEIGHT) / 2.0))
+			_drag_handle.add_theme_stylebox_override("panel", style)
 		style.bg_color = M3Theme.get_on_surface_variant()
-		style.set_corner_radius_all(int(M3Units.dp(DRAG_HANDLE_HEIGHT) / 2.0))
-		_drag_handle.add_theme_stylebox_override("panel", style)
 
 func _update_height():
 	if _sheet_container:
 		var height_px = M3Units.dp(peek_height)
-		_sheet_container.custom_minimum_size = Vector2(0, height_px)
+		_sheet_container.size.y = height_px
+		_position_sheet()
 
 # ============================================
 # ANIMATION
@@ -153,8 +164,7 @@ func _animate_in():
 	if not _sheet_container:
 		return
 	
-	var viewport = get_viewport()
-	var screen_size = viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+	var screen_size = _get_screen_size()
 	var height_px = _sheet_container.size.y
 	var start_y = screen_size.y
 	var end_y = screen_size.y - height_px
@@ -166,8 +176,10 @@ func _animate_in():
 	if _scrim and sheet_variant == Variant.MODAL:
 		_scrim.modulate.a = 0
 		_scrim.visible = true
-		var scrim_tween = create_tween()
-		scrim_tween.tween_property(_scrim, "modulate:a", 1.0, 0.3)
+		if _scrim_tween and _scrim_tween.is_valid():
+			_scrim_tween.kill()
+		_scrim_tween = create_tween()
+		_scrim_tween.tween_property(_scrim, "modulate:a", 1.0, 0.3)
 	
 	_tween = create_tween()
 	_tween.set_ease(Tween.EASE_OUT)
@@ -179,21 +191,22 @@ func _animate_out(callback: Callable):
 		callback.call()
 		return
 	
-	var viewport = get_viewport()
-	var screen_size = viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+	var screen_size = _get_screen_size()
 	var end_y = screen_size.y
 	var width_px = _get_sheet_width(screen_size.x)
 	var x_pos = (screen_size.x - width_px) / 2.0
 	
 	if _scrim and sheet_variant == Variant.MODAL:
-		var scrim_tween = create_tween()
-		scrim_tween.tween_property(_scrim, "modulate:a", 0.0, 0.3)
+		if _scrim_tween and _scrim_tween.is_valid():
+			_scrim_tween.kill()
+		_scrim_tween = create_tween()
+		_scrim_tween.tween_property(_scrim, "modulate:a", 0.0, 0.3)
 	
 	_tween = create_tween()
 	_tween.set_ease(Tween.EASE_IN)
 	_tween.set_trans(Tween.TRANS_CUBIC)
-	_tween.tween_property(_sheet_container, "position", Vector2(x_pos, end_y), 0.3)
-	_tween.finished.connect(callback)
+	_tween.tween_property(_sheet_container, "position:y", end_y, 0.3)
+	_tween.finished.connect(callback, CONNECT_ONE_SHOT)
 
 # ============================================
 # PUBLIC API

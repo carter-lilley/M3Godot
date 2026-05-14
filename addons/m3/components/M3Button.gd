@@ -128,6 +128,8 @@ var _cached_style_hover_pressed: StyleBoxFlat
 var _cached_colors_hash: int = -1
 var _cached_colors_normal: Dictionary = {}
 var _cached_colors_selected: Dictionary = {}
+var _cached_pad_h_px: int = 0
+var _cached_icon_size_px: int = 0
 
 # ============================================
 # LIFECYCLE
@@ -139,13 +141,17 @@ func _ready():
 	_update_icon()  # Set icon visibility first
 	size_flags_vertical = 0  # Don't expand vertically in containers
 	_update_size()
+	_initialize_theme_overrides()
 	_update_theme()  # Then configure styleboxes with correct visibility
 	# Position icon once layout is stable
 	call_deferred("_update_icon_position")
 	# Connect signals
-	toggled.connect(_on_toggled)
-	button_down.connect(_on_button_down)
-	button_up.connect(_on_button_up)
+	if not toggled.is_connected(_on_toggled):
+		toggled.connect(_on_toggled)
+	if not button_down.is_connected(_on_button_down):
+		button_down.connect(_on_button_down)
+	if not button_up.is_connected(_on_button_up):
+		button_up.connect(_on_button_up)
 	
 	# Setup tooltip
 	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
@@ -180,7 +186,22 @@ func _initialize_caches():
 		sb.anti_aliasing = true
 		sb.anti_aliasing_size = 1.0
 
+func _initialize_theme_overrides():
+	# Apply theme overrides once; subsequent _update_theme() calls only mutate the cached objects
+	add_theme_stylebox_override("normal", _cached_style_normal)
+	add_theme_stylebox_override("hover", _cached_style_hover)
+	add_theme_stylebox_override("pressed", _cached_style_pressed)
+	add_theme_stylebox_override("disabled", _cached_style_disabled)
+	add_theme_stylebox_override("focus", _cached_style_focus)
+	add_theme_stylebox_override("hover_pressed", _cached_style_hover_pressed)
+	add_theme_stylebox_override("normal_mirrored", _cached_style_normal)
+	add_theme_stylebox_override("hover_mirrored", _cached_style_hover)
+	add_theme_stylebox_override("pressed_mirrored", _cached_style_pressed)
+	add_theme_stylebox_override("hover_pressed_mirrored", _cached_style_hover_pressed)
+
 func _create_icon():
+	if is_instance_valid(_icon_node):
+		return
 	_icon_node = FontIcon.new()
 	_icon_node.visible = false
 	_icon_node.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -201,22 +222,21 @@ func _update_size():
 		return
 	var spec = _get_size_spec()
 	var height_px = M3Units.dp(spec["height"])
-	var icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
+	_cached_icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
+	_cached_pad_h_px = M3Units.dp(spec["padding_h"])
 	custom_minimum_size = Vector2(custom_minimum_size.x, height_px)
 	if _icon_node:
-		_icon_node.icon_settings.icon_size = icon_size_px
+		_icon_node.icon_settings.icon_size = _cached_icon_size_px
 		# Force icon node to exact icon_size so glyph is centered within fixed bounds
-		_icon_node.custom_minimum_size = Vector2(icon_size_px, icon_size_px)
-		_icon_node.size = Vector2(icon_size_px, icon_size_px)
+		_icon_node.custom_minimum_size = Vector2(_cached_icon_size_px, _cached_icon_size_px)
+		_icon_node.size = Vector2(_cached_icon_size_px, _cached_icon_size_px)
 
 func _update_icon():
 	if not _icon_node:
 		return
 	
-	var spec = _get_size_spec()
 	var was_visible = _icon_node.visible
 	if icon_name:
-		_icon_node.icon_settings.icon_size = max(1.0, M3Units.dp(spec["icon_size"]))
 		_icon_node.icon_settings.icon_name = icon_name
 		_icon_node.visible = true
 	else:
@@ -227,12 +247,12 @@ func _update_icon():
 		_update_theme()
 
 func _on_toggled(_pressed: bool):
-	_update_theme()
+	_update_colors()
 	queue_redraw()
 
 func _get_variant_colors(selected: bool) -> Dictionary:
 	"""Get cached colors for a variant in either selected (on) or unselected (off) toggle state."""
-	var state = hash([button_variant, button_type, disabled])
+	var state: int = (button_variant << 3) | (button_type << 1) | int(disabled)
 	if _cached_colors_hash != state:
 		_cached_colors_hash = state
 		_cached_colors_normal = _compute_variant_colors(false)
@@ -355,6 +375,9 @@ func _update_theme():
 	var border_c: Color = colors.border_c
 	var border_w: int = colors.border_w
 	
+	var icon_gap = M3Units.dp(spec["icon_gap"])
+	var has_icon = _icon_node and _icon_node.visible
+	
 	var sel_bg: Color = selected_colors.bg
 	var sel_text: Color = selected_colors.text
 	var sel_hover_bg: Color = selected_colors.hover_bg
@@ -375,40 +398,27 @@ func _update_theme():
 	var display_focus = pressed_bg if _menu_active else bg
 	
 	# Normal state
-	_configure_stylebox(_cached_style_normal, display_bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
-	add_theme_stylebox_override("normal", _cached_style_normal)
+	_configure_stylebox(_cached_style_normal, display_bg, radius, pad_h, icon_gap, has_icon, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	
 	# Hover state
-	_configure_stylebox(_cached_style_hover, display_hover, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
-	add_theme_stylebox_override("hover", _cached_style_hover)
+	_configure_stylebox(_cached_style_hover, display_hover, radius, pad_h, icon_gap, has_icon, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	
 	# Pressed state (shadow drops on press; always 0 for pressed state)
-	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, border_w, border_c, 0, shadow_off, shadow_col)
-	add_theme_stylebox_override("pressed", _cached_style_pressed)
+	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, icon_gap, has_icon, border_w, border_c, 0, shadow_off, shadow_col)
 	
 	# Disabled state
-	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, border_w, border_c)
-	add_theme_stylebox_override("disabled", _cached_style_disabled)
+	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, icon_gap, has_icon, border_w, border_c)
 	
 	# Focus state
-	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, 3, focus_border)
-	add_theme_stylebox_override("focus", _cached_style_focus)
+	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, icon_gap, has_icon, 3, focus_border)
 	
 	# Hover pressed state (checked hover for toggles)
 	if button_type == Type.TOGGLE:
 		var sel_border_w = selected_colors.border_w
 		var sel_border_c = selected_colors.border_c
-		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, sel_border_w, sel_border_c, shadow_size, shadow_off, shadow_col)
-		add_theme_stylebox_override("hover_pressed", _cached_style_hover_pressed)
+		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, icon_gap, has_icon, sel_border_w, sel_border_c, shadow_size, shadow_off, shadow_col)
 		# Override pressed with selected colors for toggle mode
-		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, sel_border_w, sel_border_c, 0, shadow_off, shadow_col)
-		add_theme_stylebox_override("pressed", _cached_style_pressed)
-		
-		# Toggle selected stylebox overrides (for RTL/mirrored layouts)
-		add_theme_stylebox_override("normal_mirrored", _cached_style_normal)
-		add_theme_stylebox_override("hover_mirrored", _cached_style_hover)
-		add_theme_stylebox_override("pressed_mirrored", _cached_style_pressed)
-		add_theme_stylebox_override("hover_pressed_mirrored", _cached_style_hover_pressed)
+		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, icon_gap, has_icon, sel_border_w, sel_border_c, 0, shadow_off, shadow_col)
 	
 	# Text colors - for toggles, compute the *visual target* color so text and icon
 	# flip immediately on press (before button_pressed changes on release).
@@ -441,12 +451,9 @@ func _update_theme():
 	# Sync icon color to match text color (pass cached colors to avoid recomputation)
 	_update_icon_color(colors, selected_colors)
 
-func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
+func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, icon_gap: int = -1, has_icon: bool = false, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
 		return
-	var spec = _get_size_spec()
-	var icon_gap = M3Units.dp(spec["icon_gap"])
-	var has_icon = _icon_node and _icon_node.visible
 	
 	style.bg_color = bg
 	if _custom_corner_radii.is_empty():
@@ -464,8 +471,7 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	
 	if has_icon:
 		# Icon area is exactly icon_size wide, glyph centered within
-		var icon_size_px = M3Units.dp(spec["icon_size"])
-		style.content_margin_left = pad_h + icon_size_px + icon_gap
+		style.content_margin_left = pad_h + _cached_icon_size_px + icon_gap
 		style.content_margin_right = pad_h
 	else:
 		style.content_margin_left = pad_h
@@ -477,8 +483,7 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	else:
 		style.set_border_width_all(0)
 
-func _get_radius() -> int:
-	var spec = _get_size_spec()
+func _get_radius(spec: Dictionary = _get_size_spec()) -> int:
 	if button_shape == Shape.PILL:
 		return int(M3Units.dp(spec["height"]) / 2.0)
 	return M3Units.dp(spec["radius"])
@@ -554,20 +559,16 @@ func _update_icon_position():
 	if not _icon_node or not _icon_node.visible:
 		return
 	
-	var spec = _get_size_spec()
-	var pad_h = M3Units.dp(spec["padding_h"])
-	var icon_size_px = M3Units.dp(spec["icon_size"])
-	
 	var icon_x: float
 	if text.is_empty():
 		# Center icon horizontally when no text
-		icon_x = size.x / 2.0 - icon_size_px / 2.0
+		icon_x = size.x / 2.0 - _cached_icon_size_px / 2.0
 	else:
-		icon_x = pad_h
+		icon_x = _cached_pad_h_px
 	
 	_icon_node.position = Vector2(
 		icon_x,
-		size.y / 2.0 - icon_size_px / 2.0
+		size.y / 2.0 - _cached_icon_size_px / 2.0
 	)
 
 var _custom_corner_radii: Array[int] = []

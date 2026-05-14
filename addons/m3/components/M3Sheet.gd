@@ -47,10 +47,11 @@ var _back_btn: M3IconButton
 var _headline_label: Label
 var _close_btn: M3IconButton
 var _content_slot: VBoxContainer
-var _scroll: ScrollContainer
 
 var _ready_called: bool = false
 var _tween: Tween
+var _scrim_tween: Tween
+var _back_callback: Callable = Callable()
 
 # ============================================
 # LIFECYCLE
@@ -113,17 +114,23 @@ func _update_appearance():
 	if not _sheet_container:
 		return
 	
-	var style = StyleBoxFlat.new()
-	style.anti_aliasing = true
-	style.anti_aliasing_size = 1.0
+	var style = _sheet_container.get_theme_stylebox("panel")
+	if not style is StyleBoxFlat:
+		style = StyleBoxFlat.new()
+		style.anti_aliasing = true
+		style.anti_aliasing_size = 1.0
+		_sheet_container.add_theme_stylebox_override("panel", style)
+	
 	style.bg_color = M3Theme.get_surface_container_low()
 	
 	if sheet_variant == Variant.MODAL:
 		style.shadow_color = M3Theme.ELEVATION_1["color"]
 		style.shadow_size = M3Theme.ELEVATION_1["size"]
 		style.shadow_offset = M3Theme.ELEVATION_1["offset"]
-	
-	_sheet_container.add_theme_stylebox_override("panel", style)
+	else:
+		style.shadow_color = Color.TRANSPARENT
+		style.shadow_size = 0
+		style.shadow_offset = Vector2.ZERO
 	
 	if _scrim:
 		_scrim.visible = (sheet_variant == Variant.MODAL)
@@ -141,6 +148,10 @@ func _update_header():
 # ANIMATION
 # ============================================
 
+func _get_screen_size() -> Vector2:
+	var viewport = get_viewport()
+	return viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+
 func _animate_in():
 	pass
 
@@ -150,6 +161,11 @@ func _animate_out(callback: Callable):
 # ============================================
 # INPUT
 # ============================================
+
+func _input(event: InputEvent):
+	if not dismissible and event.is_action_pressed("ui_cancel"):
+		return
+	super._input(event)
 
 func _on_scrim_input(event: InputEvent):
 	if not dismissible:
@@ -164,11 +180,13 @@ func _on_scrim_input(event: InputEvent):
 func set_back_visible(visible: bool, callback: Callable = Callable()):
 	if _back_btn:
 		_back_btn.visible = visible
-		# Disconnect any existing callbacks first
-		for conn in _back_btn.pressed.get_connections():
-			_back_btn.pressed.disconnect(conn.callable)
+		# Disconnect only our tracked callback
+		if _back_callback.is_valid():
+			_back_btn.pressed.disconnect(_back_callback)
+			_back_callback = Callable()
 		if visible and callback.is_valid():
 			_back_btn.pressed.connect(callback)
+			_back_callback = callback
 
 func refresh_theme():
 	if _ready_called:

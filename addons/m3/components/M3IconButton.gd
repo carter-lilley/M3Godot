@@ -134,7 +134,7 @@ func _update_icon_position():
 		size.y / 2.0 - icon_size_px / 2.0
 	)
 
-func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
+func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, icon_gap: int = -1, has_icon: bool = false, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
 		return
 	
@@ -151,7 +151,7 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	else:
 		style.set_border_width_all(0)
 
-func _get_radius() -> int:
+func _get_radius(_spec: Dictionary = {}) -> int:
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	if icon_button_shape == IconShape.CIRCULAR:
 		return int(M3Units.dp(spec["size"]) / 2.0)
@@ -211,38 +211,26 @@ func _update_theme():
 	var display_focus = pressed_bg if _menu_active else bg
 	
 	# Normal state
-	_configure_stylebox(_cached_style_normal, display_bg, radius, pad_h, border_w, border_c)
-	add_theme_stylebox_override("normal", _cached_style_normal)
+	_configure_stylebox(_cached_style_normal, display_bg, radius, pad_h, -1, false, border_w, border_c)
 	
 	# Hover state
-	_configure_stylebox(_cached_style_hover, display_hover, radius, pad_h, border_w, border_c)
-	add_theme_stylebox_override("hover", _cached_style_hover)
+	_configure_stylebox(_cached_style_hover, display_hover, radius, pad_h, -1, false, border_w, border_c)
 	
 	# Pressed state
-	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, border_w, border_c)
-	add_theme_stylebox_override("pressed", _cached_style_pressed)
+	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, -1, false, border_w, border_c)
 	
 	# Disabled state
-	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, border_w, border_c)
-	add_theme_stylebox_override("disabled", _cached_style_disabled)
+	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, -1, false, border_w, border_c)
 	
 	# Focus state
-	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, 3, focus_border)
-	add_theme_stylebox_override("focus", _cached_style_focus)
+	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, -1, false, 3, focus_border)
 	
 	# Hover pressed state (checked hover for toggles)
 	if button_type == Type.TOGGLE:
 		var sel_border_w = selected_colors.border_w
 		var sel_border_c = selected_colors.border_c
-		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, sel_border_w, sel_border_c)
-		add_theme_stylebox_override("hover_pressed", _cached_style_hover_pressed)
-		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, sel_border_w, sel_border_c)
-		add_theme_stylebox_override("pressed", _cached_style_pressed)
-		
-		add_theme_stylebox_override("normal_mirrored", _cached_style_normal)
-		add_theme_stylebox_override("hover_mirrored", _cached_style_hover)
-		add_theme_stylebox_override("pressed_mirrored", _cached_style_pressed)
-		add_theme_stylebox_override("hover_pressed_mirrored", _cached_style_hover_pressed)
+		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, -1, false, sel_border_w, sel_border_c)
+		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, -1, false, sel_border_w, sel_border_c)
 	
 	# Text colors (for icon color sync)
 	var current_text: Color

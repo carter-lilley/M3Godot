@@ -31,12 +31,12 @@ const CHIP_SPEC = {
 			return
 		chip_variant = value
 		# Auto-configure checkable for FILTER chips
+		# button_type setter handles _update_theme() and queue_redraw()
 		if chip_variant == ChipVariant.FILTER:
 			button_type = Type.TOGGLE
 		elif button_type == Type.TOGGLE:
 			button_type = Type.NORMAL
-		_update_theme()
-		queue_redraw()
+		_update_focus_connections()
 
 @export var checked: bool = false:
 	get:
@@ -44,9 +44,8 @@ const CHIP_SPEC = {
 	set(value):
 		if value == button_pressed:
 			return
+		# button_pressed emits toggled signal → _on_toggled() handles theme update
 		button_pressed = value
-		_update_theme()
-		queue_redraw()
 
 @export var elevated: bool = false:
 	set(value):
@@ -54,16 +53,14 @@ const CHIP_SPEC = {
 			return
 		elevated = value
 		_update_theme()
-		queue_redraw()
 
 @export var leading_icon: String = "":
 	set(value):
 		if value == leading_icon:
 			return
 		leading_icon = value
+		# icon_name setter handles _update_icon() and _update_theme()
 		icon_name = value  # sync with parent
-		_update_icon()
-		_update_theme()
 
 @export var close_icon_name: String = "close":
 	set(value):
@@ -86,6 +83,7 @@ const CHIP_SPEC = {
 			return
 		trailing_icon = value
 		_update_trailing_icon()
+		_update_focus_connections()
 		_update_theme()
 
 # ============================================
@@ -126,10 +124,30 @@ func _ready():
 	_update_trailing_icon()
 	call_deferred("_update_icon_positions")
 	
-	# Connect focus signals for FILTER chip menu auto-open
-	if chip_variant == ChipVariant.FILTER and not trailing_icon.is_empty():
+	_update_focus_connections()
+
+func _exit_tree():
+	# Clean up SceneTreeTimer if node is removed while timer is running
+	if _menu_open_timer != null and _menu_open_timer.timeout.is_connected(_open_menu):
+		_menu_open_timer.timeout.disconnect(_open_menu)
+		_menu_open_timer = null
+	super._exit_tree()
+
+func _update_focus_connections():
+	var should_connect = (chip_variant == ChipVariant.FILTER and not trailing_icon.is_empty())
+	var has_focus_entered = focus_entered.is_connected(_on_focus_entered)
+	
+	if should_connect and not has_focus_entered:
 		focus_entered.connect(_on_focus_entered)
 		focus_exited.connect(_on_focus_exited)
+	elif not should_connect and has_focus_entered:
+		focus_entered.disconnect(_on_focus_entered)
+		focus_exited.disconnect(_on_focus_exited)
+		# Clean up any pending timer
+		if _menu_open_timer != null:
+			if _menu_open_timer.timeout.is_connected(_open_menu):
+				_menu_open_timer.timeout.disconnect(_open_menu)
+			_menu_open_timer = null
 
 func _create_checked_icon():
 	_checked_icon_node = FontIcon.new()
@@ -240,11 +258,6 @@ func _compute_variant_colors(_selected: bool) -> Dictionary:
 			result.text = M3Theme.get_on_surface_variant()
 			result.border_c = M3Theme.get_outline()
 			result.border_w = 1
-			result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
-			result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color.TRANSPARENT
-			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
-			result.focus_border = result.text
 		
 		ChipVariant.FILTER:
 			if _selected or button_pressed:
@@ -257,22 +270,12 @@ func _compute_variant_colors(_selected: bool) -> Dictionary:
 				result.text = M3Theme.get_on_surface_variant()
 				result.border_c = M3Theme.get_outline()
 				result.border_w = 1
-			result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
-			result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color.TRANSPARENT
-			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
-			result.focus_border = result.text
 		
 		ChipVariant.INPUT:
 			result.bg = Color.TRANSPARENT
 			result.text = M3Theme.get_on_surface_variant()
 			result.border_c = M3Theme.get_outline()
 			result.border_w = 1
-			result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
-			result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color.TRANSPARENT
-			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
-			result.focus_border = result.text
 		
 		ChipVariant.SUGGESTION:
 			if elevated:
@@ -285,13 +288,23 @@ func _compute_variant_colors(_selected: bool) -> Dictionary:
 				result.text = M3Theme.get_on_surface_variant()
 				result.border_c = M3Theme.get_outline()
 				result.border_w = 1
-			result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
-			result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
-			result.disabled_bg = Color.TRANSPARENT
-			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
-			result.focus_border = result.text
+	
+	# Common properties for all variants
+	result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
+	result.pressed_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_PRESSED)
+	result.disabled_bg = Color.TRANSPARENT
+	result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
+	result.focus_border = result.text
 	
 	return result
+
+func _get_variant_colors(selected: bool) -> Dictionary:
+	var state = hash([chip_variant, button_type, disabled, elevated])
+	if _cached_colors_hash != state:
+		_cached_colors_hash = state
+		_cached_colors_normal = _compute_variant_colors(false)
+		_cached_colors_selected = _compute_variant_colors(true)
+	return _cached_colors_selected if selected else _cached_colors_normal
 
 func _update_theme():
 	if not _cached_style_normal:
@@ -302,7 +315,7 @@ func _update_theme():
 	var pad_h = M3Units.dp(spec["padding_h"])
 	var font_size = M3Units.dp(spec["font_size"])
 	
-	var colors = _compute_variant_colors(false)
+	var colors = _get_variant_colors(false)
 	
 	var bg: Color = colors.bg
 	var text: Color = colors.text
@@ -322,19 +335,17 @@ func _update_theme():
 		shadow_off = M3Theme.ELEVATION_1["offset"]
 		shadow_col = M3Theme.ELEVATION_1["color"]
 	
-	_configure_stylebox(_cached_style_normal, bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
-	add_theme_stylebox_override("normal", _cached_style_normal)
+	var margins = _compute_content_margins(pad_h)
 	
-	_configure_stylebox(_cached_style_hover, hover_bg, radius, pad_h, border_w, border_c, shadow_size, shadow_off, shadow_col)
-	add_theme_stylebox_override("hover", _cached_style_hover)
+	_configure_chip_stylebox(_cached_style_normal, bg, radius, margins.left, margins.right, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	
-	_configure_stylebox(_cached_style_pressed, pressed_bg, radius, pad_h, border_w, border_c, 0, shadow_off, shadow_col)
-	add_theme_stylebox_override("pressed", _cached_style_pressed)
+	_configure_chip_stylebox(_cached_style_hover, hover_bg, radius, margins.left, margins.right, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	
-	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, border_w, border_c)
-	add_theme_stylebox_override("disabled", _cached_style_disabled)
+	_configure_chip_stylebox(_cached_style_pressed, pressed_bg, radius, margins.left, margins.right, border_w, border_c, 0, shadow_off, shadow_col)
 	
-	_configure_stylebox(_cached_style_focus, bg, radius, pad_h, 2, focus_border)
+	_configure_chip_stylebox(_cached_style_disabled, disabled_bg, radius, margins.left, margins.right, border_w, border_c)
+	
+	_configure_chip_stylebox(_cached_style_focus, bg, radius, margins.left, margins.right, 2, focus_border)
 	add_theme_stylebox_override("focus", _cached_style_focus)
 	
 	add_theme_color_override("font_color", text)
@@ -348,20 +359,10 @@ func _update_theme():
 	
 	_update_all_icon_colors(text)
 
-func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
-	if not style:
-		return
+func _compute_content_margins(pad_h: int) -> Dictionary:
 	var spec = _get_size_spec()
 	var icon_gap = M3Units.dp(spec["icon_gap"])
 	var icon_size = M3Units.dp(spec["icon_size"])
-	
-	style.bg_color = bg
-	style.set_corner_radius_all(radius)
-	style.content_margin_top = 0
-	style.content_margin_bottom = 0
-	style.shadow_size = shadow_size
-	style.shadow_offset = shadow_off
-	style.shadow_color = shadow_col
 	
 	var left_margin = pad_h
 	var right_margin = pad_h
@@ -376,6 +377,20 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 	
 	if _trailing_icon_node and _trailing_icon_node.visible:
 		right_margin += icon_size + icon_gap
+	
+	return {"left": left_margin, "right": right_margin}
+
+func _configure_chip_stylebox(style: StyleBoxFlat, bg: Color, radius: int, left_margin: int, right_margin: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
+	if not style:
+		return
+	
+	style.bg_color = bg
+	style.set_corner_radius_all(radius)
+	style.content_margin_top = 0
+	style.content_margin_bottom = 0
+	style.shadow_size = shadow_size
+	style.shadow_offset = shadow_off
+	style.shadow_color = shadow_col
 	
 	style.content_margin_left = left_margin
 	style.content_margin_right = right_margin
@@ -454,7 +469,7 @@ func _update_all_icon_colors(text_color: Color):
 
 func _update_icon_color(_colors: Dictionary = {}, _selected_colors: Dictionary = {}):
 	# Override parent to use our unified icon color update
-	var colors = _compute_variant_colors(false)
+	var colors = _get_variant_colors(false)
 	var text_color = colors.text
 	if disabled:
 		text_color = colors.disabled_text

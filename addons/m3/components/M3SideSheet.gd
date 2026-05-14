@@ -22,7 +22,8 @@ func _build_sheet_layout():
 	# Scrim
 	_scrim = ColorRect.new()
 	_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_scrim.color = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, 0.32)
+	var on_surf = M3Theme.get_on_surface()
+	_scrim.color = Color(on_surf.r, on_surf.g, on_surf.b, 0.32)
 	_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_scrim.gui_input.connect(_on_scrim_input)
 	_scrim.visible = false
@@ -64,8 +65,7 @@ func _position_sheet():
 	if not _sheet_container:
 		return
 	
-	var viewport = get_viewport()
-	var screen_size = viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+	var screen_size = _get_screen_size()
 	var width_px = M3Units.dp(SHEET_WIDTH)
 	
 	# Position off-screen to the right initially
@@ -73,13 +73,20 @@ func _position_sheet():
 	_sheet_container.size = Vector2(width_px, screen_size.y)
 	
 	if sheet_variant == Variant.MODAL:
-		# Rounded left corners for modal
-		var style = _sheet_container.get_theme_stylebox("panel")
-		if style is StyleBoxFlat:
-			style.corner_radius_top_left = M3Units.dp(CORNER_RADIUS)
-			style.corner_radius_bottom_left = M3Units.dp(CORNER_RADIUS)
-			style.corner_radius_top_right = 0
-			style.corner_radius_bottom_right = 0
+		_update_corner_radii()
+
+func _update_appearance():
+	super._update_appearance()
+	if sheet_variant == Variant.MODAL and _sheet_container:
+		_update_corner_radii()
+
+func _update_corner_radii():
+	var style = _sheet_container.get_theme_stylebox("panel")
+	if style is StyleBoxFlat:
+		style.corner_radius_top_left = M3Units.dp(CORNER_RADIUS)
+		style.corner_radius_bottom_left = M3Units.dp(CORNER_RADIUS)
+		style.corner_radius_top_right = 0
+		style.corner_radius_bottom_right = 0
 
 # ============================================
 # ANIMATION
@@ -89,8 +96,7 @@ func _animate_in():
 	if not _sheet_container:
 		return
 	
-	var viewport = get_viewport()
-	var screen_size = viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+	var screen_size = _get_screen_size()
 	var width_px = M3Units.dp(SHEET_WIDTH)
 	var start_x = screen_size.x
 	var end_x = screen_size.x - width_px
@@ -100,8 +106,10 @@ func _animate_in():
 	if _scrim and sheet_variant == Variant.MODAL:
 		_scrim.modulate.a = 0
 		_scrim.visible = true
-		var scrim_tween = create_tween()
-		scrim_tween.tween_property(_scrim, "modulate:a", 1.0, 0.3)
+		if _scrim_tween and _scrim_tween.is_valid():
+			_scrim_tween.kill()
+		_scrim_tween = create_tween()
+		_scrim_tween.tween_property(_scrim, "modulate:a", 1.0, 0.3)
 	
 	_tween = create_tween()
 	_tween.set_ease(Tween.EASE_OUT)
@@ -113,19 +121,20 @@ func _animate_out(callback: Callable):
 		callback.call()
 		return
 	
-	var viewport = get_viewport()
-	var screen_size = viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
+	var screen_size = _get_screen_size()
 	var end_x = screen_size.x
 	
 	if _scrim and sheet_variant == Variant.MODAL:
-		var scrim_tween = create_tween()
-		scrim_tween.tween_property(_scrim, "modulate:a", 0.0, 0.3)
+		if _scrim_tween and _scrim_tween.is_valid():
+			_scrim_tween.kill()
+		_scrim_tween = create_tween()
+		_scrim_tween.tween_property(_scrim, "modulate:a", 0.0, 0.3)
 	
 	_tween = create_tween()
 	_tween.set_ease(Tween.EASE_IN)
 	_tween.set_trans(Tween.TRANS_CUBIC)
 	_tween.tween_property(_sheet_container, "position:x", end_x, 0.3)
-	_tween.finished.connect(callback)
+	_tween.finished.connect(callback, CONNECT_ONE_SHOT)
 
 # ============================================
 # PUBLIC API

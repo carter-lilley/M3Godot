@@ -17,6 +17,7 @@ enum Size { SMALL, LARGE }
 		if value == mode:
 			return
 		mode = value
+		_invalidate_min_size()
 		queue_redraw()
 
 @export var progress_size: Size = Size.SMALL:
@@ -24,23 +25,31 @@ enum Size { SMALL, LARGE }
 		if value == progress_size:
 			return
 		progress_size = value
+		_invalidate_min_size()
 		queue_redraw()
 
 @export var value: float = 0.0:
 	set(p_value):
-		value = clampf(p_value, 0.0, max_value)
+		var clamped = clampf(p_value, 0.0, max_value)
+		if clamped == value:
+			return
+		value = clamped
 		queue_redraw()
 
 @export var max_value: float = 100.0:
 	set(p_value):
+		if p_value == max_value:
+			return
 		max_value = maxf(p_value, 0.001)
 		value = clampf(value, 0.0, max_value)
 		queue_redraw()
 
 @export var indeterminate: bool = false:
-	set(value):
-		indeterminate = value
-		set_process(value)
+	set(p_value):
+		if p_value == indeterminate:
+			return
+		indeterminate = p_value
+		set_process(indeterminate)
 		queue_redraw()
 
 # ============================================
@@ -49,8 +58,12 @@ enum Size { SMALL, LARGE }
 
 var _track_color: Color
 var _indicator_color: Color
+var _endpoint_color: Color
 var _indet_start: float = 0.0
 var _indet_end: float = 0.0
+
+var _cached_min_size: Vector2 = Vector2.ZERO
+var _cached_min_size_dirty: bool = true
 
 # ============================================
 # LIFECYCLE
@@ -91,33 +104,35 @@ func _draw_linear():
 			track_height = M3Units.dp(4)
 	
 	var radius = track_height / 2.0
-	var rect = get_rect()
-	var track_y = rect.size.y / 2.0 - track_height / 2.0
-	var gap = M3Units.dp(4)
+	var rect_size_x = size.x
+	var rect_size_y = size.y
+	var track_y = rect_size_y / 2.0 - track_height / 2.0
+	var track_center_y = track_y + radius
 	
 	var start_x: float
 	var end_x: float
 	
 	if indeterminate:
-		start_x = rect.size.x * _indet_start
-		end_x = rect.size.x * _indet_end
+		start_x = rect_size_x * _indet_start
+		end_x = rect_size_x * _indet_end
 	else:
 		var fraction = value / max_value
 		start_x = 0.0
-		end_x = rect.size.x * fraction
+		end_x = rect_size_x * fraction
 	
 	var fill_width = end_x - start_x
 	
 	# Draw full track behind everything
-	draw_rect(Rect2(Vector2(radius, track_y), Vector2(rect.size.x - track_height, track_height)), _track_color, true)
+	draw_rect(Rect2(Vector2(radius, track_y), Vector2(rect_size_x - track_height, track_height)), _track_color, true)
 	var cap_radius = radius * 0.75
-	draw_arc(Vector2(radius, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _track_color, cap_radius, true)
-	draw_arc(Vector2(rect.size.x - radius, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _track_color, cap_radius, true)
+	var left_cap_pos = Vector2(radius, track_center_y)
+	var right_cap_pos = Vector2(rect_size_x - radius, track_center_y)
+	draw_circle(left_cap_pos, cap_radius, _track_color)
+	draw_circle(right_cap_pos, cap_radius, _track_color)
 	
 	# Endpoint indicator (right side only, 4dp dot)
 	var endpoint_radius = M3Units.dp(2)
-	var endpoint_color = M3Theme.get_on_surface()
-	draw_arc(Vector2(rect.size.x - radius, track_y + radius), endpoint_radius / 2.0, 0.0, TAU, 32, endpoint_color, endpoint_radius, true)
+	draw_circle(right_cap_pos, endpoint_radius, _endpoint_color)
 	
 	# Draw fill on top of track
 	if fill_width > 0:
@@ -125,9 +140,9 @@ func _draw_linear():
 		if fill_rect_width > 0:
 			draw_rect(Rect2(Vector2(start_x + radius, track_y), Vector2(fill_rect_width, track_height)), _indicator_color, true)
 		# Fill left cap
-		draw_arc(Vector2(start_x + radius, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
+		draw_circle(Vector2(start_x + radius, track_center_y), cap_radius, _indicator_color)
 		# Fill right cap (before gap) — always draw, just like track caps
-		draw_arc(Vector2(end_x, track_y + radius), cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
+		draw_circle(Vector2(end_x, track_center_y), cap_radius, _indicator_color)
 
 func _draw_circular():
 	var diameter: float
@@ -170,16 +185,12 @@ func _draw_circular():
 			_draw_thick_arc(center, radius, start_angle, end_angle, _indicator_color, stroke)
 			
 			# Rounded caps at indicator endpoints
-			var offset = -PI / 2.0
-			var actual_start = start_angle + offset
-			var actual_end = end_angle + offset
-			
-			var start_point = center + Vector2(cos(actual_start), sin(actual_start)) * radius
-			var end_point = center + Vector2(cos(actual_end), sin(actual_end)) * radius
+			var start_point = center + Vector2(cos(start_angle - PI / 2.0), sin(start_angle - PI / 2.0)) * radius
+			var end_point = center + Vector2(cos(end_angle - PI / 2.0), sin(end_angle - PI / 2.0)) * radius
 			
 			var cap_radius = stroke * 0.375
-			draw_arc(start_point, cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
-			draw_arc(end_point, cap_radius / 2.0, 0.0, TAU, 32, _indicator_color, cap_radius, true)
+			draw_circle(start_point, cap_radius, _indicator_color)
+			draw_circle(end_point, cap_radius, _indicator_color)
 
 func _draw_thick_arc(center: Vector2, radius: float, start_angle: float, end_angle: float, color: Color, width: float):
 	# Godot angles: 0 = right, positive = counter-clockwise
@@ -198,6 +209,7 @@ func _draw_thick_arc(center: Vector2, radius: float, start_angle: float, end_ang
 func refresh_theme():
 	_track_color = M3Theme.get_elevation_surface(5)
 	_indicator_color = M3Theme.get_primary()
+	_endpoint_color = M3Theme.get_on_surface()
 	queue_redraw()
 
 # ============================================
@@ -214,7 +226,14 @@ func get_fraction() -> float:
 # SIZE
 # ============================================
 
+func _invalidate_min_size():
+	_cached_min_size_dirty = true
+	update_minimum_size()
+
 func _get_minimum_size() -> Vector2:
+	if not _cached_min_size_dirty:
+		return _cached_min_size
+	
 	if mode == Mode.LINEAR:
 		var h: float
 		match progress_size:
@@ -222,7 +241,7 @@ func _get_minimum_size() -> Vector2:
 				h = M3Units.dp(8)
 			_:
 				h = M3Units.dp(4)
-		return Vector2(M3Units.dp(100), h)
+		_cached_min_size = Vector2(M3Units.dp(100), h)
 	else:
 		var d: float
 		match progress_size:
@@ -230,4 +249,7 @@ func _get_minimum_size() -> Vector2:
 				d = M3Units.dp(44)
 			_:
 				d = M3Units.dp(40)
-		return Vector2(d, d)
+		_cached_min_size = Vector2(d, d)
+	
+	_cached_min_size_dirty = false
+	return _cached_min_size
