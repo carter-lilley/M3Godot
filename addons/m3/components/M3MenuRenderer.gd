@@ -763,14 +763,10 @@ func _on_item_mouse_entered(index: int):
 func _on_item_focus_exited(index: int):
 	if _focused_item_index == index:
 		_focused_item_index = -1
+	# Visual unfocus: revert to forced-focus state only
+	_update_item_visual(index, index == _forced_focus_index)
 
 func _on_item_focus_entered(index: int):
-	# Incremental update: only old and new items
-	var old_focused = _focused_item_index
-	if old_focused >= 0 and old_focused != index and old_focused < _item_nodes.size():
-		var prev_focused = old_focused == _forced_focus_index
-		_update_item_visual(old_focused, prev_focused)
-	
 	_update_item_visual(index, true)
 	_focused_item_index = index
 	

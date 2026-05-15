@@ -10,37 +10,53 @@ extends M3Button
 enum IconSize { EXTRA_SMALL, SMALL, MEDIUM, LARGE, EXTRA_LARGE }
 enum IconShape { CIRCULAR, ROUNDED_SQUARE }
 enum IconVariant { STANDARD, FILLED, TONAL, OUTLINED }
+enum IconWidth { DEFAULT, NARROW, WIDE }
 
 # ============================================
 # ICON BUTTON SIZE SPECS (all values in dp)
-# All sizes are square: width == height
+# Heights are fixed per size; widths vary by IconWidth mode.
 # ============================================
 
 const ICON_SIZE_SPECS = {
 	IconSize.EXTRA_SMALL: {
-		"size": 32,
+		"height": 32,
 		"icon_size": 18,
 		"radius": 8,
+		"width_default": 32,
+		"width_narrow": 28,
+		"width_wide": 40,
 	},
 	IconSize.SMALL: {
-		"size": 40,
+		"height": 40,
 		"icon_size": 20,
 		"radius": 10,
+		"width_default": 40,
+		"width_narrow": 32,
+		"width_wide": 52,
 	},
 	IconSize.MEDIUM: {
-		"size": 48,
+		"height": 56,
 		"icon_size": 24,
 		"radius": 12,
+		"width_default": 56,
+		"width_narrow": 48,
+		"width_wide": 72,
 	},
 	IconSize.LARGE: {
-		"size": 56,
+		"height": 96,
 		"icon_size": 28,
 		"radius": 14,
+		"width_default": 96,
+		"width_narrow": 64,
+		"width_wide": 128,
 	},
 	IconSize.EXTRA_LARGE: {
-		"size": 64,
+		"height": 136,
 		"icon_size": 32,
 		"radius": 16,
+		"width_default": 136,
+		"width_narrow": 104,
+		"width_wide": 184,
 	},
 }
 
@@ -62,6 +78,15 @@ const ICON_SIZE_SPECS = {
 		if value == icon_button_shape:
 			return
 		icon_button_shape = value
+		_update_theme()
+		queue_redraw()
+
+@export var icon_button_width: IconWidth = IconWidth.DEFAULT:
+	set(value):
+		if value == icon_button_width:
+			return
+		icon_button_width = value
+		_update_size()
 		_update_theme()
 		queue_redraw()
 
@@ -93,11 +118,18 @@ func _update_size():
 	if not _cached_style_normal:
 		return
 	var spec = ICON_SIZE_SPECS[icon_button_size]
-	var size_px = M3Units.dp(spec["size"])
+	var height_px = M3Units.dp(spec["height"])
 	var icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
 	
-	# Force square dimensions
-	custom_minimum_size = Vector2(size_px, size_px)
+	var width_key = "width_default"
+	match icon_button_width:
+		IconWidth.NARROW:
+			width_key = "width_narrow"
+		IconWidth.WIDE:
+			width_key = "width_wide"
+	var width_px = M3Units.dp(spec[width_key])
+	
+	custom_minimum_size = Vector2(width_px, height_px)
 	
 	if _icon_node:
 		_icon_node.icon_settings.icon_size = icon_size_px
@@ -130,8 +162,8 @@ func _update_icon_position():
 	
 	# Center icon both horizontally and vertically
 	_icon_node.position = Vector2(
-		size.x / 2.0 - icon_size_px / 2.0,
-		size.y / 2.0 - icon_size_px / 2.0
+		(size.x - icon_size_px) / 2.0,
+		(size.y - icon_size_px) / 2.0
 	)
 
 func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, icon_gap: int = -1, has_icon: bool = false, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
@@ -139,7 +171,13 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 		return
 	
 	style.bg_color = bg
-	style.set_corner_radius_all(radius)
+	if _custom_corner_radii.is_empty():
+		style.set_corner_radius_all(radius)
+	else:
+		style.corner_radius_top_left = _custom_corner_radii[0]
+		style.corner_radius_top_right = _custom_corner_radii[1]
+		style.corner_radius_bottom_left = _custom_corner_radii[2]
+		style.corner_radius_bottom_right = _custom_corner_radii[3]
 	style.set_content_margin_all(pad_h)
 	style.shadow_size = shadow_size
 	style.shadow_offset = shadow_off
@@ -154,8 +192,53 @@ func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int
 func _get_radius(_spec: Dictionary = {}) -> int:
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	if icon_button_shape == IconShape.CIRCULAR:
-		return int(M3Units.dp(spec["size"]) / 2.0)
+		# Circular uses half the height as radius (creates pill shape when wide/narrow)
+		return int(M3Units.dp(spec["height"]) / 2.0)
 	return M3Units.dp(spec["radius"])
+
+# ============================================
+# OVERRIDE COLOR UPDATE (uses icon variant colors)
+# ============================================
+
+func _update_colors():
+	var colors: Dictionary
+	var selected_colors: Dictionary
+	
+	if button_type == Type.TOGGLE:
+		colors = _get_icon_variant_colors(false)
+		selected_colors = _get_icon_variant_colors(true)
+	else:
+		# Non-toggle: default state matches the "selected" colors for
+		# FILLED/Tonal (showing their container), and "unselected" for
+		# STANDARD/Outlined (no container or outline)
+		match icon_button_variant:
+			IconVariant.FILLED, IconVariant.TONAL:
+				colors = _get_icon_variant_colors(true)
+			_:
+				colors = _get_icon_variant_colors(false)
+		selected_colors = colors
+	
+	var current_text: Color
+	var disabled_text: Color
+	if disabled:
+		current_text = colors.disabled_text
+		disabled_text = colors.disabled_text
+	elif button_type == Type.TOGGLE:
+		var target_selected = button_pressed != _is_pressing
+		current_text = selected_colors.text if target_selected else colors.text
+		disabled_text = selected_colors.disabled_text
+	else:
+		current_text = colors.text
+		disabled_text = colors.disabled_text
+	
+	add_theme_color_override("font_color", current_text)
+	add_theme_color_override("font_hover_color", current_text)
+	add_theme_color_override("font_pressed_color", current_text)
+	add_theme_color_override("font_hover_pressed_color", current_text)
+	add_theme_color_override("font_focus_color", current_text)
+	add_theme_color_override("font_disabled_color", disabled_text)
+	
+	_update_icon_color(colors, selected_colors)
 
 # ============================================
 # OVERRIDE THEME METHOD

@@ -139,7 +139,7 @@ func _draw_linear():
 	
 	# Draw full track behind everything
 	draw_rect(Rect2(Vector2(radius, track_y), Vector2(rect_size_x - track_height, track_height)), _track_color, true)
-	var cap_radius = radius * 0.80
+	var cap_radius = radius * 1.0
 	var left_cap_pos = Vector2(radius, track_center_y)
 	var right_cap_pos = Vector2(rect_size_x - radius, track_center_y)
 	_cap_stylebox.bg_color = _track_color
@@ -206,7 +206,7 @@ func _draw_circular():
 			var start_point = center + Vector2(cos(start_angle - PI / 2.0), sin(start_angle - PI / 2.0)) * radius
 			var end_point = center + Vector2(cos(end_angle - PI / 2.0), sin(end_angle - PI / 2.0)) * radius
 			
-			var cap_radius = stroke * 0.375
+			var cap_radius = stroke * 0.5
 			_cap_stylebox.bg_color = _indicator_color
 			draw_style_box(_cap_stylebox, Rect2(start_point.x - cap_radius, start_point.y - cap_radius, cap_radius * 2, cap_radius * 2))
 			draw_style_box(_cap_stylebox, Rect2(end_point.x - cap_radius, end_point.y - cap_radius, cap_radius * 2, cap_radius * 2))

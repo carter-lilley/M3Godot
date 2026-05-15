@@ -50,6 +50,7 @@ var _anchor_rect_override: Rect2 = Rect2()
 var _label: Label
 var _rich_label: RichTextLabel
 var _bg_panel: Panel
+var _anchor_start_pos: Vector2 = Vector2.ZERO
 
 # ============================================
 # STATIC BIND API
@@ -172,6 +173,13 @@ func _ready():
 	_create_visuals()
 	_position_and_show()
 
+func _process(_delta):
+	# Dismiss if anchor has moved (e.g., page scrolled)
+	if not visible or _anchor_node == null or not is_instance_valid(_anchor_node):
+		return
+	if _anchor_node.global_position.distance_to(_anchor_start_pos) > 1.0:
+		dismiss()
+
 func _create_visuals():
 	# Background panel
 	_bg_panel = Panel.new()
@@ -196,6 +204,10 @@ func _create_visuals():
 
 func _position_and_show():
 	_update_appearance()
+	
+	# Store anchor starting position for scroll dismissal
+	if _anchor_node and is_instance_valid(_anchor_node):
+		_anchor_start_pos = _anchor_node.global_position
 	
 	# Rich tooltips need text set BEFORE measurement (get_content_height)
 	if _tooltip_variant == Variant.RICH:

@@ -136,6 +136,7 @@ var _ready_called: bool = false
 var _cached_bg_sb: StyleBoxFlat
 var _cached_border_sb: StyleBoxFlat
 var _cached_patch_sb: StyleBoxFlat
+var _cached_focus_ring_sb: StyleBoxFlat
 var _cached_empty_normal: StyleBoxEmpty
 var _cached_empty_focus: StyleBoxEmpty
 var _cached_empty_readonly: StyleBoxEmpty
@@ -207,6 +208,11 @@ func _initialize_styleboxes():
 	_cached_patch_sb = StyleBoxFlat.new()
 	_cached_patch_sb.set_corner_radius_all(0)
 	_cached_patch_sb.anti_aliasing = false
+	
+	_cached_focus_ring_sb = StyleBoxFlat.new()
+	_cached_focus_ring_sb.bg_color = Color.TRANSPARENT
+	_cached_focus_ring_sb.anti_aliasing = true
+	_cached_focus_ring_sb.anti_aliasing_size = 1.0
 	
 	# Pooled StyleBoxEmpty instances for LineEdit margin overrides
 	# LineEdit only re-reads margins on new resource assignment, but we can
@@ -324,15 +330,17 @@ func _draw():
 	var border_color: Color
 	var border_width: float
 	
-	if not editable:
-		border_color = M3Theme.disabled_color(M3Theme.get_outline())
-		border_width = M3Units.dp(BORDER_WIDTH)
-	elif has_error:
+	# Focus must be checked BEFORE not editable so non-editable focused controls
+	# (e.g., M3OptionButton) still show focused state.
+	if has_error:
 		border_color = M3Theme.get_error()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
 	elif _is_focused or _menu_active:
 		border_color = M3Theme.get_primary()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
+	elif not editable:
+		border_color = M3Theme.disabled_color(M3Theme.get_outline())
+		border_width = M3Units.dp(BORDER_WIDTH)
 	elif _hovered:
 		border_color = M3Theme.get_on_surface()
 		border_width = M3Units.dp(BORDER_WIDTH)
@@ -346,6 +354,11 @@ func _draw():
 		_draw_filled(rect, border_color, border_width)
 	else:
 		_draw_outlined(rect, border_color, border_width)
+	
+	# TODO: Focus ring behavior temporarily disabled — revisit with cleaner
+	# implementation that doesn't overlap with floating label patch
+	# if _is_focused and not _menu_active:
+	#     _draw_focus_ring(rect)
 
 func _draw_filled(rect: Rect2, border_color: Color, border_width: float):
 	var line_y = rect.position.y + rect.size.y - border_width / 2.0
@@ -374,6 +387,27 @@ func _draw_outlined(rect: Rect2, border_color: Color, border_width: float):
 			)
 			_cached_patch_sb.bg_color = M3Theme.get_surface()
 			_cached_patch_sb.draw(get_canvas_item(), patch_rect)
+
+func _draw_focus_ring(rect: Rect2):
+	var ring_color = M3Theme.get_primary()
+	var ring_width = M3Units.dp(1)
+	
+	_cached_focus_ring_sb.border_color = ring_color
+	_cached_focus_ring_sb.set_border_width_all(ring_width)
+	
+	if field_variant == Variant.FILLED:
+		# Ring around the filled area (top corners rounded only)
+		_cached_focus_ring_sb.corner_radius_top_left = M3Units.dpi(RADIUS)
+		_cached_focus_ring_sb.corner_radius_top_right = M3Units.dpi(RADIUS)
+		_cached_focus_ring_sb.corner_radius_bottom_left = 0
+		_cached_focus_ring_sb.corner_radius_bottom_right = 0
+	else:
+		# Ring around the outlined area (all corners rounded)
+		_cached_focus_ring_sb.set_corner_radius_all(M3Units.dpi(RADIUS))
+	
+	# Draw at the border edge (not grown outward) so the floating label patch
+	# covers the top portion and prevents overlap
+	_cached_focus_ring_sb.draw(get_canvas_item(), rect)
 
 func _update_bg_panel():
 	if not _bg_panel:
