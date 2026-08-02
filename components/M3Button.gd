@@ -7,6 +7,8 @@ extends Button
 ## Material 3 Button Component
 ## Extends native Button with M3 sizing, shapes, and variants
 
+
+
 enum Size { EXTRA_SMALL, SMALL, MEDIUM, LARGE, EXTRA_LARGE }
 enum Shape { ROUNDED, PILL }
 enum Type { NORMAL, TOGGLE }
@@ -131,6 +133,10 @@ var _cached_colors_selected: Dictionary = {}
 var _cached_pad_h_px: int = 0
 var _cached_icon_size_px: int = 0
 
+## When false, M3Button will not auto-set size_flags_vertical or custom_minimum_size.y.
+## Useful for subclasses (e.g., M3NavigationDestination) whose parent container controls sizing.
+var auto_size_vertical: bool = true
+
 # ============================================
 # LIFECYCLE
 # ============================================
@@ -139,7 +145,8 @@ func _ready():
 	_initialize_caches()
 	_create_icon()
 	_update_icon()  # Set icon visibility first
-	size_flags_vertical = 0  # Don't expand vertically in containers
+	if auto_size_vertical:
+		size_flags_vertical = 0  # Don't expand vertically in containers
 	_update_size()
 	_initialize_theme_overrides()
 	_update_theme()  # Then configure styleboxes with correct visibility
@@ -224,7 +231,8 @@ func _update_size():
 	var height_px = M3Units.dp(spec["height"])
 	_cached_icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
 	_cached_pad_h_px = M3Units.dp(spec["padding_h"])
-	custom_minimum_size = Vector2(custom_minimum_size.x, height_px)
+	if auto_size_vertical:
+		custom_minimum_size = Vector2(custom_minimum_size.x, height_px)
 	if _icon_node:
 		_icon_node.icon_settings.icon_size = _cached_icon_size_px
 		# Force icon node to exact icon_size so glyph is centered within fixed bounds
@@ -315,7 +323,8 @@ func _compute_variant_colors(selected: bool) -> Dictionary:
 				result.hover_bg = M3Theme.state_overlay(M3Theme.get_inverse_surface(), result.text, M3Theme.OPACITY_HOVER)
 				result.pressed_bg = M3Theme.state_overlay(M3Theme.get_inverse_surface(), result.text, M3Theme.OPACITY_PRESSED)
 			else:
-				result.bg = Color.TRANSPARENT
+				var surface = M3Theme.get_surface()
+				result.bg = Color(surface.r, surface.g, surface.b, 0.02)
 				result.text = M3Theme.get_on_surface_variant()
 				result.border_c = M3Theme.get_outline_variant()
 				# Hover/press overlays on surface for unselected
@@ -324,7 +333,7 @@ func _compute_variant_colors(selected: bool) -> Dictionary:
 			result.disabled_bg = Color.TRANSPARENT
 			result.disabled_text = M3Theme.disabled_color(M3Theme.get_on_surface())
 			result.focus_border = result.text
-			result.border_w = 1
+			result.border_w = 2
 		Variant.TEXT:
 			if selected:
 				result.bg = M3Theme.get_primary_container()
@@ -442,7 +451,9 @@ func _update_theme():
 	add_theme_color_override("font_focus_color", current_text)
 	add_theme_color_override("font_disabled_color", disabled_text)
 	
-	# Font size
+	# Font
+	var fonts = M3Theme.load_fonts()
+	add_theme_font_override("font", fonts["medium"])
 	add_theme_font_size_override("font_size", font_size)
 	
 	# Text alignment
@@ -570,6 +581,28 @@ func _update_icon_position():
 		icon_x,
 		size.y / 2.0 - _cached_icon_size_px / 2.0
 	)
+
+func _gui_input(event: InputEvent):
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		# Inside a SubViewport, Button ignores clicks because is_hovered() is false
+		# (push_input() doesn't update the viewport's internal cursor position).
+		# Manually trigger press/release signals.
+		var vp = get_viewport()
+		if vp is SubViewport:
+			accept_event()
+			if event.pressed:
+				_is_pressing = true
+				grab_focus()
+				button_down.emit()
+				_update_colors()
+				queue_redraw()
+			else:
+				_is_pressing = false
+				button_up.emit()
+				_update_colors()
+				queue_redraw()
+				if not disabled:
+					pressed.emit()
 
 var _custom_corner_radii: Array[int] = []
 

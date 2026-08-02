@@ -51,6 +51,7 @@ var _label: Label
 var _rich_label: RichTextLabel
 var _bg_panel: Panel
 var _anchor_start_pos: Vector2 = Vector2.ZERO
+var _movement_timer: Timer = null
 
 # ============================================
 # STATIC BIND API
@@ -105,7 +106,7 @@ static func _on_control_mouse_entered(control: Control):
 static func _on_control_mouse_exited(control: Control):
 	_cancel_show()
 	if M3Overlay.is_showing("tooltip"):
-		var active = M3Overlay._active.get("tooltip")
+		var active = M3Overlay.get_active_overlay("tooltip")
 		if active is M3Tooltip and active._anchor_node == control:
 			active.dismiss()
 
@@ -115,7 +116,7 @@ static func _on_control_focus_entered(control: Control):
 static func _on_control_focus_exited(control: Control):
 	_cancel_show()
 	if M3Overlay.is_showing("tooltip"):
-		var active = M3Overlay._active.get("tooltip")
+		var active = M3Overlay.get_active_overlay("tooltip")
 		if active is M3Tooltip and active._anchor_node == control:
 			active.dismiss()
 
@@ -154,9 +155,9 @@ static func _show_for(control: Control, text: String, variant: Variant):
 	if control.has_method("get_tooltip_anchor_rect"):
 		tooltip._anchor_rect_override = control.get_tooltip_anchor_rect()
 	
-	var tree = Engine.get_main_loop()
-	if tree and tree.root:
-		tree.root.add_child(tooltip)
+	var parent = M3Overlay.get_overlay_parent()
+	if parent:
+		parent.add_child(tooltip)
 		tooltip.show_overlay()
 
 # ============================================
@@ -173,12 +174,31 @@ func _ready():
 	_create_visuals()
 	_position_and_show()
 
-func _process(_delta):
-	# Dismiss if anchor has moved (e.g., page scrolled)
+func _start_movement_timer() -> void:
+	if _movement_timer != null:
+		return
+	_movement_timer = Timer.new()
+	_movement_timer.wait_time = 0.1
+	_movement_timer.timeout.connect(_check_anchor_moved)
+	add_child(_movement_timer)
+	_movement_timer.start()
+
+func _stop_movement_timer() -> void:
+	if _movement_timer != null and is_instance_valid(_movement_timer):
+		_movement_timer.stop()
+		_movement_timer.queue_free()
+	_movement_timer = null
+
+func _check_anchor_moved() -> void:
 	if not visible or _anchor_node == null or not is_instance_valid(_anchor_node):
+		dismiss()
 		return
 	if _anchor_node.global_position.distance_to(_anchor_start_pos) > 1.0:
 		dismiss()
+
+func dismiss() -> void:
+	_stop_movement_timer()
+	super.dismiss()
 
 func _create_visuals():
 	# Background panel
@@ -208,6 +228,7 @@ func _position_and_show():
 	# Store anchor starting position for scroll dismissal
 	if _anchor_node and is_instance_valid(_anchor_node):
 		_anchor_start_pos = _anchor_node.global_position
+	_start_movement_timer()
 	
 	# Rich tooltips need text set BEFORE measurement (get_content_height)
 	if _tooltip_variant == Variant.RICH:

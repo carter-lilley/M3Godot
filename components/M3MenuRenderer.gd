@@ -5,6 +5,9 @@ const M3MenuItem = preload("res://addons/m3/components/M3MenuItem.gd")
 
 static var _shared_empty_stylebox: StyleBoxEmpty = StyleBoxEmpty.new()
 
+static func clear_shared_stylebox() -> void:
+	_shared_empty_stylebox = null
+
 ## Material 3 Menu Renderer
 ## Visual popup layer for M3Menu. Lazy-loaded when popup() is called.
 ## Handles rendering, input, keyboard navigation, and dismissal.
@@ -62,10 +65,13 @@ var _anchor_control: Control = null
 var _horizontal_alignment: MenuAlignment = MenuAlignment.START
 var _min_width: float = 0.0
 var _multi_select: bool = false
+var _radio_group: bool = false
 var _submenu_mode: bool = false
+var _submenu_rect: Rect2 = Rect2()
 var _suppress_submenu: bool = false
 var _forced_focus_index: int = -1
 var _focused_item_index: int = -1
+var _touch_active: bool = false
 var _font_icon_template: FontIconSettings = null
 var _cached_fonts: Dictionary = {}
 
@@ -101,6 +107,7 @@ func _create_visuals():
 	_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_scroll.follow_focus = false
 	add_child(_scroll)
 	
 	# Vertical container for items
@@ -133,7 +140,7 @@ func _update_appearance():
 # PUBLIC API
 # ============================================
 
-func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = ColorVariant.STANDARD, alignment: MenuAlignment = MenuAlignment.START, auto_focus_first: bool = true, min_width: float = 0.0, multi_select: bool = false, submenu_mode: bool = false):
+func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = ColorVariant.STANDARD, alignment: MenuAlignment = MenuAlignment.START, auto_focus_first: bool = true, min_width: float = 0.0, multi_select: bool = false, radio_group: bool = false, submenu_mode: bool = false, silent_focus_first: bool = true):
 	_ensure_visuals()
 	_cached_fonts = M3Theme.load_fonts()
 	
@@ -143,6 +150,7 @@ func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = Co
 	_horizontal_alignment = alignment
 	_min_width = min_width
 	_multi_select = multi_select
+	_radio_group = radio_group
 	_submenu_mode = submenu_mode
 	_cache_variant_colors()
 	
@@ -157,13 +165,21 @@ func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = Co
 	if _scroll:
 		_scroll.scroll_vertical = 0
 	
-	# Focus the first Button (for keyboard navigation; disable for dropdowns)
+	# Focus the first Button (for keyboard navigation; disable for dropdowns).
+	# Defer so the renderer and its items have finished their first layout pass
+	# before we grab focus, otherwise focus_entered may not fire and the custom
+	# focus overlay stays hidden.
 	if auto_focus_first:
-		for node in _item_nodes:
-			if node is Button:
-				node.grab_focus()
-				break
+		call_deferred("_focus_first_item", silent_focus_first)
 	_update_item_visuals()
+
+func _focus_first_item(silent: bool) -> void:
+	for node in _item_nodes:
+		if node is Button and node.focus_mode != Control.FOCUS_NONE:
+			if silent and UIManager:
+				UIManager.suppress_next_focus_sound()
+			node.grab_focus()
+			break
 
 func dismiss():
 	visible = false
@@ -187,6 +203,8 @@ func _clear_items():
 		child.queue_free()
 
 func _build_items():
+	if _cached_fonts.is_empty():
+		_cached_fonts = M3Theme.load_fonts()
 	var fonts = _cached_fonts
 	
 	for i in range(_menu_items.size()):
@@ -437,7 +455,7 @@ func _create_two_line_node(item: M3MenuItem, index: int, fonts: Dictionary) -> C
 	return node
 
 func _create_interactable_node(item: M3MenuItem, index: int, height: float) -> Button:
-	var node = Button.new()
+	var node = M3MenuButton.new()
 	node.custom_minimum_size = Vector2(0, height)
 	node.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	node.mouse_filter = Control.MOUSE_FILTER_PASS if not item.disabled else Control.MOUSE_FILTER_IGNORE
@@ -574,8 +592,6 @@ func _calculate_size_and_position():
 	
 	# Right margin equals half the width of the longest item
 	var width = clamp(max_content_width * 1.5, M3Units.dp(MIN_WIDTH), M3Units.dp(MAX_WIDTH))
-	# For dropdowns: ensure menu is at least as wide as the anchor control
-	width = max(width, _min_width)
 	
 	# Calculate total content height
 	var total_height = pad_v * 2
@@ -600,14 +616,39 @@ func _calculate_size_and_position():
 		viewport_size = viewport.get_visible_rect().size
 	var anchor_rect = _anchor_control.get_global_rect() if _anchor_control else Rect2(Vector2.ZERO, Vector2.ZERO)
 	
+	# Clamp menu size to the actual viewport so fitting is possible on small screens
+	var max_available_width = maxf(viewport_size.x - margin * 2.0, 1.0)
+	var max_available_height = maxf(viewport_size.y - margin * 2.0, 1.0)
+	width = min(width, max_available_width)
+	visible_height = min(visible_height, max_available_height)
+	# For dropdowns: ensure menu is at least as wide as the anchor control, but never wider than the viewport
+	width = max(width, min(_min_width, max_available_width))
+	
 	# Try positions with visible height
 	var positions = _compute_positions(anchor_rect, width, visible_height, gap)
 	
-	var pos: Vector2 = positions[0]  # Default to first (below-start)
+	var pos: Vector2 = positions[0]
+	var found = false
+	# Prefer positions that are fully visible and don't overlap the anchor
 	for try_pos in positions:
 		if _position_fits(try_pos, width, visible_height, viewport_size, margin, anchor_rect):
 			pos = try_pos
+			found = true
 			break
+	if not found:
+		# Allow overlapping the anchor if it keeps the menu fully on screen
+		for try_pos in positions:
+			if _position_fits(try_pos, width, visible_height, viewport_size, margin, anchor_rect, true):
+				pos = try_pos
+				found = true
+				break
+	if not found:
+		# Last resort: use the first candidate and clamp it to the viewport
+		pos = positions[0]
+	
+	# Final safety clamp so the menu is never rendered off-screen
+	pos.x = clampf(pos.x, margin, viewport_size.x - width - margin)
+	pos.y = clampf(pos.y, margin, viewport_size.y - visible_height - margin)
 	
 	global_position = pos
 	size = Vector2(width, visible_height)
@@ -619,6 +660,9 @@ func _calculate_size_and_position():
 	# Update scroll container (visible area)
 	_scroll.position = Vector2(pad_h, pad_v)
 	_scroll.size = Vector2(width - pad_h * 2, visible_height - pad_v * 2)
+	
+	# Only show the vertical scrollbar when content actually overflows.
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if total_height > visible_height else ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	
 	# Update vbox (total content size for scrolling)
 	_vbox.custom_minimum_size = Vector2(width - pad_h * 2, total_height - pad_v * 2)
@@ -670,7 +714,7 @@ func _compute_positions(anchor_rect: Rect2, menu_w: float, menu_h: float, gap: f
 	
 	return positions
 
-func _position_fits(pos: Vector2, width: float, height: float, viewport_size: Vector2, margin: float, anchor_rect: Rect2) -> bool:
+func _position_fits(pos: Vector2, width: float, height: float, viewport_size: Vector2, margin: float, anchor_rect: Rect2, ignore_overlap: bool = false) -> bool:
 	# Must fit within viewport margins
 	if pos.x < margin or pos.x + width > viewport_size.x - margin:
 		return false
@@ -678,9 +722,10 @@ func _position_fits(pos: Vector2, width: float, height: float, viewport_size: Ve
 		return false
 	
 	# Must not overlap anchor (if possible)
-	var menu_rect = Rect2(pos, Vector2(width, height))
-	if menu_rect.intersects(anchor_rect):
-		return false
+	if not ignore_overlap:
+		var menu_rect = Rect2(pos, Vector2(width, height))
+		if menu_rect.intersects(anchor_rect):
+			return false
 	
 	return true
 
@@ -697,10 +742,18 @@ func _input(event: InputEvent):
 	if not visible:
 		return
 	
+	if event is InputEventScreenTouch:
+		_touch_active = event.pressed
+	elif event is InputEventScreenDrag:
+		_touch_active = true
+	
 	# Outside-click dismissal only; ui_cancel is handled by M3Overlay base class
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if not get_global_rect().has_point(event.global_position):
-			dismiss()
+			# Don't dismiss if the click is inside an open submenu or the scroll container
+			if not _submenu_rect.has_point(event.global_position):
+				if not (_scroll and _scroll.get_global_rect().has_point(event.global_position)):
+					dismiss()
 		return
 	
 	# Right arrow opens submenu for the focused item
@@ -754,11 +807,20 @@ func _get_last_focusable_index() -> int:
 	return -1
 
 func _on_item_mouse_entered(index: int):
+	# Ignore emulated mouse hover during touch drags so hover-focus doesn't
+	# fight the ScrollContainer's drag scrolling.
+	if _touch_active:
+		return
 	# Mouse hover grabs focus so there's only ever one focused item
 	if index >= 0 and index < _item_nodes.size():
 		var node = _item_nodes[index]
 		if not node.has_focus():
 			node.grab_focus()
+		elif not _suppress_submenu and index >= 0 and index < _menu_items.size():
+			# Already focused but mouse re-entered — re-request submenu if applicable
+			var item = _menu_items[index]
+			if item.submenu != null:
+				submenu_requested.emit(index)
 
 func _on_item_focus_exited(index: int):
 	if _focused_item_index == index:
@@ -769,6 +831,11 @@ func _on_item_focus_exited(index: int):
 func _on_item_focus_entered(index: int):
 	_update_item_visual(index, true)
 	_focused_item_index = index
+	
+	# follow_focus is disabled (it fights touch drag scrolling), so scroll
+	# keyboard/gamepad focus into view manually.
+	if _scroll and index >= 0 and index < _item_nodes.size():
+		_scroll.ensure_control_visible(_item_nodes[index])
 	
 	focus_changed.emit(index)
 	if not _suppress_submenu and index >= 0 and index < _menu_items.size():
@@ -793,9 +860,22 @@ func _activate_item(index: int):
 	if item.disabled:
 		return
 	
+	# If this item has a submenu, open it instead of activating
+	if item.submenu != null:
+		submenu_requested.emit(index)
+		return
+	
 	# Toggle checkable items
 	if item.checkable:
-		item.checked = not item.checked
+		if _radio_group:
+			# Radio behavior: uncheck all others, check this one
+			for i in range(_menu_items.size()):
+				if i != index and _menu_items[i].checkable and _menu_items[i].checked:
+					_menu_items[i].checked = false
+					_update_item_checkmark(i)
+			item.checked = true
+		else:
+			item.checked = not item.checked
 		_update_item_checkmark(index)
 	
 	if item.callback.is_valid():
@@ -909,6 +989,9 @@ func _update_item_checkmark(index: int):
 			else:
 				icon_node.icon_settings.icon_name = ""
 				icon_node.icon_settings.icon_color = Color.TRANSPARENT
+
+func set_submenu_rect(rect: Rect2):
+	_submenu_rect = rect
 
 func set_submenu_open(index: int, open: bool):
 	if index < 0 or index >= _item_nodes.size():

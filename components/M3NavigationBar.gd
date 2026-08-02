@@ -4,17 +4,43 @@ extends M3Navigation
 
 ## Material 3 Bottom Navigation Bar
 ## Horizontal navigation component for top-level destinations.
-## Supports compact (icon+label vertical, 80dp) and expanded (icon+label horizontal, 64dp) modes.
+## Supports compact (icon+label vertical, 64dp) and expanded (icon+label horizontal, 80dp) modes.
 
 # ============================================
 # SIZE SPECS (all values in dp)
 # ============================================
 
-const HEIGHT_COMPACT := 80
-const HEIGHT_EXPANDED := 64
+const HEIGHT_COMPACT := 64
+const HEIGHT_EXPANDED := 80
 const MIN_ITEM_WIDTH := 80
 const MAX_ITEM_WIDTH := 168
 const MENU_BUTTON_WIDTH := 80  # 16 + 48 + 16
+
+# M3-aligned compact levels for crowded destinations.
+# Widths are the minimum per-item width needed at each level.
+const COMPACT_WIDTHS = {
+	M3NavigationDestination.CompactLevel.NONE: 80,
+	M3NavigationDestination.CompactLevel.ICON_ONLY: 56,
+	M3NavigationDestination.CompactLevel.SMALL: 48,
+	M3NavigationDestination.CompactLevel.EXTRA_SMALL: 40,
+	M3NavigationDestination.CompactLevel.BEST_FIT: 32,
+}
+
+const COMPACT_HEIGHTS = {
+	M3NavigationDestination.CompactLevel.NONE: 80,
+	M3NavigationDestination.CompactLevel.ICON_ONLY: 64,
+	M3NavigationDestination.CompactLevel.SMALL: 56,
+	M3NavigationDestination.CompactLevel.EXTRA_SMALL: 48,
+	M3NavigationDestination.CompactLevel.BEST_FIT: 48,
+}
+
+const COMPACT_ORDER = [
+	M3NavigationDestination.CompactLevel.NONE,
+	M3NavigationDestination.CompactLevel.ICON_ONLY,
+	M3NavigationDestination.CompactLevel.SMALL,
+	M3NavigationDestination.CompactLevel.EXTRA_SMALL,
+	M3NavigationDestination.CompactLevel.BEST_FIT,
+]
 
 # ============================================
 # EXPORTS
@@ -30,6 +56,8 @@ var _content_container: HBoxContainer
 var _items_container: HBoxContainer
 var _menu_wrapper: MarginContainer
 var _menu_button: M3IconButton
+var _footer_wrapper: MarginContainer
+var _current_compact_level: int = M3NavigationDestination.CompactLevel.NONE
 
 # ============================================
 # LIFECYCLE
@@ -40,8 +68,10 @@ func _ready():
 	super._ready()
 
 func _create_layout():
-	# Set initial height
+	# Set initial height; keep horizontal minimum at 0 so the bar can never force
+	# the parent layout wider than the viewport.
 	custom_minimum_size = Vector2(0, M3Units.dp(HEIGHT_COMPACT))
+	clip_contents = false
 	
 	# Create horizontal content container
 	_content_container = HBoxContainer.new()
@@ -73,7 +103,16 @@ func _create_layout():
 	_items_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	_items_container.add_theme_constant_override("separation", 0)
 	_items_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_items_container.clip_contents = true
 	_content_container.add_child(_items_container)
+	
+	# Footer wrapper (for footer_content slot)
+	_footer_wrapper = MarginContainer.new()
+	_footer_wrapper.name = "FooterWrapper"
+	_footer_wrapper.custom_minimum_size = Vector2(M3Units.dp(MENU_BUTTON_WIDTH), 0)
+	_footer_wrapper.size_flags_vertical = Control.SIZE_FILL
+	_footer_wrapper.visible = false
+	_content_container.add_child(_footer_wrapper)
 	
 	_update_dimensions()
 
@@ -85,8 +124,13 @@ func _update_dimensions():
 	if not _content_container:
 		return
 	
-	var height_px = M3Units.dp(HEIGHT_EXPANDED) if expanded else M3Units.dp(HEIGHT_COMPACT)
-	custom_minimum_size.y = height_px
+	var height_px: int
+	if _current_compact_level == M3NavigationDestination.CompactLevel.NONE:
+		height_px = M3Units.dp(HEIGHT_EXPANDED) if expanded else M3Units.dp(HEIGHT_COMPACT)
+	else:
+		height_px = M3Units.dp(COMPACT_HEIGHTS[_current_compact_level])
+	# Keep horizontal minimum at 0 so the bar never forces the parent layout wider.
+	custom_minimum_size = Vector2(0, height_px)
 	offset_top = -height_px
 	height_changed.emit(height_px)
 	
@@ -96,6 +140,56 @@ func _update_dimensions():
 		var vertical_margin = (height_px - btn_size) / 2.0
 		_menu_wrapper.add_theme_constant_override("margin_top", vertical_margin)
 		_menu_wrapper.add_theme_constant_override("margin_bottom", vertical_margin)
+	
+	# Center footer content vertically within wrapper
+	if _footer_wrapper:
+		var btn_size = M3Units.dp(48)
+		var vertical_margin = (height_px - btn_size) / 2.0
+		_footer_wrapper.add_theme_constant_override("margin_top", vertical_margin)
+		_footer_wrapper.add_theme_constant_override("margin_bottom", vertical_margin)
+
+func _update_menu_button_state():
+	"""Update menu button visibility and position in the bar."""
+	if not _menu_wrapper or not _content_container:
+		return
+	
+	# Visibility
+	_menu_wrapper.visible = show_menu_button
+	
+	# Position: START (left) or END (right)
+	var menu_index := 0 if menu_button_position == MenuPosition.START else 1
+	if _content_container.get_child_count() > menu_index:
+		if _content_container.get_child(menu_index) != _menu_wrapper:
+			_content_container.move_child(_menu_wrapper, menu_index)
+	
+	# Margins: left padding for START, right padding for END
+	if menu_button_position == MenuPosition.START:
+		_menu_wrapper.add_theme_constant_override("margin_left", M3Units.dp(12))
+		_menu_wrapper.add_theme_constant_override("margin_right", 0)
+	else:
+		_menu_wrapper.add_theme_constant_override("margin_left", 0)
+		_menu_wrapper.add_theme_constant_override("margin_right", M3Units.dp(12))
+	
+	_update_item_sizes()
+
+func _add_footer_content():
+	"""Add footer content to the bar's footer wrapper."""
+	if not _footer_wrapper or not footer_content:
+		return
+	
+	# Clear existing children
+	for child in _footer_wrapper.get_children():
+		_footer_wrapper.remove_child(child)
+	
+	_footer_wrapper.add_child(footer_content)
+	_footer_wrapper.visible = true
+	
+	# Position footer at END (right)
+	if _content_container and _content_container.get_child_count() > 2:
+		if _content_container.get_child(2) != _footer_wrapper:
+			_content_container.move_child(_footer_wrapper, 2)
+	
+	_update_item_sizes()
 
 func _apply_content_margins():
 	if not content_node:
@@ -149,6 +243,7 @@ func _rebuild_destinations():
 		# Create destination item
 		var item = M3NavigationDestination.new()
 		item.destination_icon = data.icon_name
+		item.destination_icon_texture = data.icon_texture
 		item.destination_label = data.label
 		item.destination_layout = target_layout
 		item.active = (i == selected_index)
@@ -179,6 +274,8 @@ func _update_destinations_in_place():
 		# Only update properties that changed
 		if item.destination_icon != data.icon_name:
 			item.destination_icon = data.icon_name
+		if item.destination_icon_texture != data.icon_texture:
+			item.destination_icon_texture = data.icon_texture
 		if item.destination_label != data.label:
 			item.destination_label = data.label
 		if item.disabled != data.disabled:
@@ -213,11 +310,58 @@ func _update_item_sizes():
 	if _destination_items.is_empty() or not _items_container:
 		return
 	
-	var available_width = size.x - M3Units.dp(MENU_BUTTON_WIDTH)
-	var ideal_width = available_width / _destination_items.size()
-	var item_width = clamp(ideal_width, M3Units.dp(MIN_ITEM_WIDTH), M3Units.dp(MAX_ITEM_WIDTH))
+	# Use the node width if it has been laid out; otherwise fall back to the
+	# viewport width so sizing is based on the actual screen real estate.
+	var viewport_width := get_viewport_rect().size.x
+	var bar_width := size.x if size.x > 0 else viewport_width
+	# Clamp to the viewport so we never size from a stale parent width that is
+	# larger than the current screen.
+	bar_width = minf(bar_width, viewport_width)
+	
+	var menu_width = M3Units.dp(MENU_BUTTON_WIDTH) if show_menu_button else 0
+	var footer_width = M3Units.dp(MENU_BUTTON_WIDTH) if footer_content else 0
+	var available_width = maxf(0.0, bar_width - menu_width - footer_width)
+	var count = _destination_items.size()
+	var ideal_width = available_width / count
+	
+	var chosen_level: int = M3NavigationDestination.CompactLevel.BEST_FIT
+	var item_width: float = ideal_width
+	
+	for level in COMPACT_ORDER:
+		var level_min = M3Units.dp(COMPACT_WIDTHS[level])
+		if level == M3NavigationDestination.CompactLevel.NONE:
+			# At full size, allow the bar to distribute extra space up to the M3 max.
+			if ideal_width >= level_min:
+				chosen_level = level
+				item_width = clampf(ideal_width, level_min, M3Units.dp(MAX_ITEM_WIDTH))
+				break
+		else:
+			# For compact levels, use the M3-aligned width if it fits exactly.
+			if available_width >= level_min * count:
+				chosen_level = level
+				item_width = level_min
+				break
+	
+	# Safety clamp: never let items collectively exceed the available width,
+	# and keep a tiny floor so items don't collapse to zero during transitions.
+	if count > 0:
+		item_width = clampf(item_width, 1.0, available_width / float(count))
+	
+	print("[M3NavigationBar] sizing bar_width=%.1f available=%.1f count=%d level=%d item_width=%.1f" % [bar_width, available_width, count, chosen_level, item_width])
+	
+	if chosen_level != _current_compact_level:
+		_current_compact_level = chosen_level
+		_update_dimensions()
+	
+	var height_px: int
+	if chosen_level == M3NavigationDestination.CompactLevel.NONE:
+		height_px = M3Units.dp(HEIGHT_EXPANDED) if expanded else M3Units.dp(HEIGHT_COMPACT)
+	else:
+		height_px = M3Units.dp(COMPACT_HEIGHTS[chosen_level])
 	
 	for item in _destination_items:
+		item.compact_level = chosen_level
+		item.custom_minimum_size.y = height_px
 		item.custom_minimum_size.x = item_width
 
 # ============================================

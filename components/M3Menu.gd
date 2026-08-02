@@ -30,13 +30,26 @@ var _summoner: Control = null
 var _submenu: M3Menu = null
 var _submenu_item_index: int = -1
 var _summoner_start_pos: Vector2 = Vector2.ZERO
+var _movement_timer: Timer = null
+var _parent_menu: M3Menu = null
+var _item_selected: bool = false
+
+# Guard against reentrant submenu closure (focus events during dismiss can trigger reopen)
+var _is_closing_submenu: bool = false
 
 ## When true, checkable items toggle without dismissing the menu.
 var multi_select: bool = false
 
+## When true, checkable items behave like radio buttons: only one can be checked at a time.
+var radio_group: bool = false
+
 ## When true, the menu is automatically freed after dismissal.
 ## Set to false for reusable menus (e.g., checkable menus that need to persist state).
 var auto_free: bool = true
+
+## When true, the menu dismisses if the anchor control moves (e.g., scroll).
+## Disable for menus anchored to scrolling items.
+var track_summoner: bool = true
 
 # ============================================
 # LIFECYCLE
@@ -47,9 +60,35 @@ func _init():
 	overlay_type = "menu"
 	overlay_layer = 95
 
-func _process(_delta):
-	# Dismiss if summoner has moved (e.g., page scrolled)
-	if not visible or _summoner == null or not is_instance_valid(_summoner):
+func _start_movement_timer() -> void:
+	if not track_summoner:
+		return
+	if _movement_timer != null:
+		return
+	if not is_inside_tree():
+		# popup() may start the timer before the menu is added to the tree;
+		# retry once we're actually in the scene tree.
+		call_deferred("_start_movement_timer")
+		return
+	_movement_timer = Timer.new()
+	_movement_timer.wait_time = 0.1
+	_movement_timer.timeout.connect(_check_summoner_moved)
+	add_child(_movement_timer)
+	_movement_timer.start()
+
+func _stop_movement_timer() -> void:
+	if _movement_timer != null and is_instance_valid(_movement_timer):
+		_movement_timer.stop()
+		_movement_timer.queue_free()
+	_movement_timer = null
+
+func _check_summoner_moved() -> void:
+	if not track_summoner:
+		return
+	if not visible:
+		return
+	if _summoner == null or not is_instance_valid(_summoner):
+		dismiss()
 		return
 	if _summoner.global_position.distance_to(_summoner_start_pos) > 1.0:
 		dismiss()
@@ -104,7 +143,9 @@ func get_item(index: int) -> M3MenuItem:
 
 ## Show the menu popup anchored to the given Control.
 ## as_submenu: when true, skips the M3Overlay singleton registry so the parent menu stays open.
-func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, min_width: float = 0.0, as_submenu: bool = false):
+## silent_focus_first: when true, suppresses the navigation focus sound for the
+## programmatic focus grab on the first item (avoids double sound on open).
+func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, min_width: float = 0.0, as_submenu: bool = false, silent_focus_first: bool = true):
 	if _items.is_empty():
 		return
 	
@@ -113,23 +154,36 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 	_summoner = anchor
 	_summoner_start_pos = anchor.global_position
 	_set_summoner_active(true)
+	_start_movement_timer()
+	
+	# Reset item selection tracking for fresh popup
+	_item_selected = false
+	_parent_menu = null
 	
 	if as_submenu:
 		# Just add to tree and show; don't register in _active so parent isn't dismissed
-		var tree = Engine.get_main_loop()
-		if tree and tree.root and get_parent() == null:
-			tree.root.add_child(self)
+		var parent = M3Overlay.get_overlay_parent()
+		if parent and get_parent() == null:
+			parent.add_child(self)
 		visible = true
 	else:
 		show_overlay()
 	
 	_ensure_renderer()
-	_renderer.popup(_items, anchor, menu_variant, alignment, auto_focus_first, min_width, multi_select, as_submenu)
+	_renderer.popup(_items, anchor, menu_variant, alignment, auto_focus_first, min_width, multi_select, radio_group, as_submenu, silent_focus_first)
+	# Disconnect old one-shot connections before reconnecting (prevents duplicates on reopen)
+	if _renderer.item_pressed.is_connected(_on_item_pressed):
+		_renderer.item_pressed.disconnect(_on_item_pressed)
 	_renderer.item_pressed.connect(_on_item_pressed, CONNECT_ONE_SHOT)
+	if _renderer.dismissed.is_connected(_on_renderer_dismissed):
+		_renderer.dismissed.disconnect(_on_renderer_dismissed)
 	_renderer.dismissed.connect(_on_renderer_dismissed, CONNECT_ONE_SHOT)
-	_renderer.submenu_requested.connect(_on_submenu_requested)
-	_renderer.focus_changed.connect(_on_focus_changed)
-	_renderer.navigated_off_edge.connect(_on_navigated_off_edge)
+	if not _renderer.submenu_requested.is_connected(_on_submenu_requested):
+		_renderer.submenu_requested.connect(_on_submenu_requested)
+	if not _renderer.focus_changed.is_connected(_on_focus_changed):
+		_renderer.focus_changed.connect(_on_focus_changed)
+	if not _renderer.navigated_off_edge.is_connected(_on_navigated_off_edge):
+		_renderer.navigated_off_edge.connect(_on_navigated_off_edge)
 
 ## Check if the menu is currently open.
 func is_open() -> bool:
@@ -140,9 +194,9 @@ func is_open() -> bool:
 # ============================================
 
 func show_overlay():
-	var tree = Engine.get_main_loop()
-	if tree and tree.root and get_parent() == null:
-		tree.root.add_child(self)
+	var parent = M3Overlay.get_overlay_parent()
+	if parent and get_parent() == null:
+		parent.add_child(self)
 	super.show_overlay()
 
 # ============================================
@@ -156,31 +210,60 @@ func _ensure_renderer():
 		add_child(_renderer)
 
 func _on_item_pressed(index: int):
-	pass
+	_item_selected = true
 
 func refresh_theme():
 	if _renderer:
 		_renderer.refresh_theme()
 
 func dismiss():
-	# Return focus to the summoner before releasing it
-	if _summoner != null and is_instance_valid(_summoner):
-		_summoner.grab_focus()
-	_release_summoner()
+	_stop_movement_timer()
 	_close_submenu()
+	# Free any non-auto_free submenus so they don't leak
+	for item in _items:
+		if item.submenu != null and is_instance_valid(item.submenu):
+			item.submenu.queue_free()
+	# Don't reset _item_selected here — it's needed by _on_submenu_dismissed
+	# to know whether the parent menu should also close. It's reset in popup().
+	_parent_menu = null
 	# Don't call super.dismiss() — M3Overlay.dismiss() queue_frees the node,
 	# but M3Menu instances are often reused (e.g., checkable menus that need
 	# to persist state across openings). Do the registry cleanup manually.
-	if _active.get(overlay_type) == self:
+	var current = _get_active_node(overlay_type)
+	if current == self:
 		_active.erase(overlay_type)
+	# Recalculate max layer so lower-layer overlays can dismiss properly
+	if overlay_layer >= _max_layer:
+		_max_layer = 0
+		for type in _active.keys():
+			var overlay = _get_active_node(type)
+			if is_instance_valid(overlay) and overlay.overlay_layer > _max_layer:
+				_max_layer = overlay.overlay_layer
 	if _renderer and _renderer.focus_changed.is_connected(_on_focus_changed):
 		_renderer.focus_changed.disconnect(_on_focus_changed)
 	if _renderer and _renderer.submenu_requested.is_connected(_on_submenu_requested):
 		_renderer.submenu_requested.disconnect(_on_submenu_requested)
 	if _renderer and _renderer.navigated_off_edge.is_connected(_on_navigated_off_edge):
 		_renderer.navigated_off_edge.disconnect(_on_navigated_off_edge)
-	dismissed.emit()
+
+	# Hide the menu before returning focus so this menu's own focus pull-back
+	# (and any active overlay's pull-back) doesn't fight the summoner focus.
 	visible = false
+	dismissed.emit()
+
+	# Return focus to the summoner. For root menus (no parent menu) this happens
+	# both on cancellation and on item selection so the originating control,
+	# e.g. an M3OptionButton, regains focus. Suppress overlay pull-back while we
+	# do this to prevent infinite recursion with the underlying overlay.
+	M3Overlay._suppress_focus_pullback = true
+	if _parent_menu == null and _summoner != null and is_instance_valid(_summoner):
+		if UIManager:
+			UIManager.suppress_next_focus_sound()
+		_summoner.grab_focus()
+	M3Overlay._suppress_focus_pullback = false
+
+	_release_summoner()
+
 	if auto_free:
 		queue_free()
 
@@ -202,6 +285,7 @@ func _on_submenu_requested(index: int):
 	
 	_submenu = item.submenu
 	_submenu_item_index = index
+	_submenu._parent_menu = self
 	
 	# Keep parent item visually focused while submenu is open
 	if _renderer:
@@ -218,41 +302,73 @@ func _on_submenu_requested(index: int):
 	else:
 		_submenu.popup(_renderer, 0, true, 0, true)
 	
-	if _submenu != null and is_instance_valid(_submenu):
-		_submenu.dismissed.connect(_on_submenu_dismissed, CONNECT_ONE_SHOT)
+	# Tell parent renderer about the submenu's rect so it doesn't dismiss on clicks inside it
+	if _renderer and _submenu != null and is_instance_valid(_submenu):
+		_renderer.set_submenu_rect(_submenu.get_menu_rect())
+		if not _submenu.dismissed.is_connected(_on_submenu_dismissed):
+			_submenu.dismissed.connect(_on_submenu_dismissed, CONNECT_ONE_SHOT)
 
 func _on_submenu_dismissed():
-	# Restore chevron, clear forced focus, and return focus to parent item
+	# If the submenu had an item selected, close the parent menu too
+	if _submenu and _submenu._item_selected:
+		dismiss()
+		return
+	
+	# Otherwise, restore chevron, clear forced focus, and return focus to parent item
 	if _renderer and _submenu_item_index >= 0:
 		_renderer._suppress_submenu = true
 		_renderer.grab_item_focus(_submenu_item_index)
 		_renderer._suppress_submenu = false
 		_renderer.set_submenu_open(_submenu_item_index, false)
 		_renderer.set_forced_focus_index(-1)
+	if _renderer:
+		_renderer.set_submenu_rect(Rect2())
 	_submenu = null
 	_submenu_item_index = -1
 
 func _close_submenu():
-	if _submenu and is_instance_valid(_submenu) and _submenu.is_open():
-		_submenu.dismissed.disconnect(_on_submenu_dismissed)
-		_submenu.dismiss()
+	if _is_closing_submenu:
+		return
+	_is_closing_submenu = true
+	
+	# Suppress BEFORE dismissing to prevent focus-grab from re-triggering submenu open
 	if _renderer and _submenu_item_index >= 0:
 		_renderer._suppress_submenu = true
+	
+	if _submenu and is_instance_valid(_submenu) and _submenu.is_open():
+		if _submenu.dismissed.is_connected(_on_submenu_dismissed):
+			_submenu.dismissed.disconnect(_on_submenu_dismissed)
+		_submenu.dismiss()
+	
+	if _renderer and _submenu_item_index >= 0:
 		_renderer.grab_item_focus(_submenu_item_index)
 		_renderer._suppress_submenu = false
 		_renderer.set_submenu_open(_submenu_item_index, false)
 		_renderer.set_forced_focus_index(-1)
+	if _renderer:
+		_renderer.set_submenu_rect(Rect2())
 	_submenu = null
 	_submenu_item_index = -1
+	_is_closing_submenu = false
 
 func _on_focus_changed(index: int):
-	# If a submenu is open and focus moved to a different item, close it
+	# Only close the submenu if focus moved to a different submenu item.
+	# Hovering normal items in the parent menu keeps the submenu open.
 	if _submenu and _submenu.is_open() and index != _submenu_item_index:
-		_close_submenu()
+		if index >= 0 and index < _items.size() and _items[index].submenu != null:
+			_close_submenu()
 
 func _on_navigated_off_edge(direction: String):
 	# Always close the menu when navigating off an edge
 	dismiss()
+
+func _on_overlay_focus_changed(control: Control) -> void:
+	# If a submenu is open, its focus is outside this menu's subtree, so the
+	# base M3Overlay pull-back would fight it. Skip pull-back while a submenu
+	# is open; the submenu handles its own focus containment.
+	if _submenu and _submenu.is_open():
+		return
+	super._on_overlay_focus_changed(control)
 
 func get_menu_rect() -> Rect2:
 	if _renderer:

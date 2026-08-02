@@ -47,7 +47,7 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_request_redraw()
 		_invalidate_stop_cache()
 
-@export var slider_size: Size = Size.MEDIUM:
+@export var slider_size: Size = Size.SMALL:
 	set(value):
 		if value == slider_size:
 			return
@@ -71,6 +71,16 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		if value == show_stops:
 			return
 		show_stops = value
+		_request_redraw()
+		_invalidate_stop_cache()
+
+## Custom stop values override the uniform step-based stops.
+## When set, the slider snaps to these exact values and draws stops at them.
+@export var custom_stop_values: Array[float] = []:
+	set(value):
+		if value == custom_stop_values:
+			return
+		custom_stop_values = value
 		_request_redraw()
 		_invalidate_stop_cache()
 
@@ -101,10 +111,11 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_request_redraw()
 
 @export var editable: bool = true:
-	get: return _slider.editable if _slider else true
+	get: return _slider.editable if _slider else _cached_editable
 	set(v):
-		if v == editable:
+		if v == _cached_editable:
 			return
+		_cached_editable = v
 		if _slider:
 			_slider.editable = v
 			_invalidate_color_cache()
@@ -145,8 +156,9 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 			_invalidate_stop_cache()
 
 @export var value: float = 0.0:
-	get: return _slider.value if _slider else 0.0
+	get: return _slider.value if _slider else _cached_value
 	set(v):
+		_cached_value = v
 		if not _slider:
 			return
 		# Prevent crossing: value can never go below range_value in RANGE mode
@@ -157,8 +169,24 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_slider.value = v
 		_request_redraw()
 
+## Minimum width of the slider in dp. Used for horizontal sliders whose
+## width must be expressed in density-independent units instead of raw pixels.
+@export var min_width_dp: float = 0.0:
+	set(value):
+		if value == min_width_dp:
+			return
+		min_width_dp = value
+		_update_size()
 @export var m3_tooltip_text: String = ""
 @export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
+
+@export var accent_color: Color = Color.TRANSPARENT:
+	set(value):
+		if value == accent_color:
+			return
+		accent_color = value
+		_invalidate_color_cache()
+		_request_redraw()
 
 # ============================================
 # INTERNAL
@@ -180,6 +208,8 @@ var _prev_value: float = 0.0  # Value before current drag/click interaction
 var _effective_min: float = 0.0
 var _effective_max: float = 100.0
 var _effective_step: float = 1.0
+var _cached_value: float = 0.0
+var _cached_editable: bool = true
 
 # Cached StyleBoxFlat instances (allocated once, mutated each frame)
 var _cached_style_rect: StyleBoxFlat
@@ -278,6 +308,18 @@ func get_range() -> Vector2:
 		return Vector2(min(value, range_value), max(value, range_value))
 	return Vector2(value, value)
 
+## Set the slider value without emitting value_changed signal.
+func set_value_no_signal(new_value: float) -> void:
+	_cached_value = new_value
+	if not _slider:
+		return
+	if is_equal_approx(new_value, _slider.value):
+		return
+	_slider.set_block_signals(true)
+	_slider.value = new_value
+	_slider.set_block_signals(false)
+	_request_redraw()
+
 
 
 # ============================================
@@ -296,9 +338,9 @@ func _ready():
 		_slider.min_value = _effective_min
 		_slider.max_value = _effective_max
 		_slider.step = _effective_step
-		_slider.value = value
-		_slider.editable = editable
-		_prev_value = value
+		_slider.value = _cached_value
+		_slider.editable = _cached_editable
+		_prev_value = _cached_value
 	
 	# Size children to fill initial parent size
 	if _slider:
@@ -523,6 +565,9 @@ func _update_size():
 		# Component height = handle height (handle extends above/below track)
 		var min_h = M3Units.dp(spec["handle_h"])
 		custom_minimum_size.y = max(custom_minimum_size.y, min_h)
+		# Optional density-independent width
+		if min_width_dp > 0.0:
+			custom_minimum_size.x = max(custom_minimum_size.x, M3Units.dp(min_width_dp))
 	_update_icons()
 
 func refresh_theme():
@@ -606,6 +651,15 @@ func _on_focus_changed(has_focus: bool):
 # ============================================
 
 func _on_value_changed(new_value: float):
+	# Snap to custom stops or step if needed
+	var snapped_value = _snap_to_nearest_stop(new_value)
+	if not is_equal_approx(snapped_value, new_value) and _slider:
+		_slider.set_block_signals(true)
+		_slider.value = snapped_value
+		_slider.set_block_signals(false)
+		new_value = snapped_value
+		_request_redraw()
+	
 	if slider_variant == Variant.RANGE:
 		if _is_dragging_primary:
 			# Primary handle drag: just constrain range_value
@@ -740,7 +794,11 @@ func _get_perp_center() -> float:
 func _get_axis_position(for_value: float) -> float:
 	var handle_size = _get_handle_w()
 	var area_size = _get_slider_axis_size() - handle_size
-	var ratio = (for_value - min_value) / (max_value - min_value)
+	var ratio: float
+	if is_equal_approx(max_value, min_value):
+		ratio = 0.5  # Center the handle when range is zero
+	else:
+		ratio = (for_value - min_value) / (max_value - min_value)
 	
 	if _is_vertical():
 		# VSlider: 0 at top, max at bottom (inverted)
@@ -831,13 +889,36 @@ func _get_disabled_color(normal_color: Color) -> Color:
 	_cached_colors[color_key] = result
 	return result
 
+func _get_accent() -> Color:
+	return accent_color if accent_color != Color.TRANSPARENT else M3Theme.get_primary()
+
 func _get_stop_positions() -> Array[float]:
 	if _cached_stops_valid:
 		return _cached_stops
 	
 	_cached_stops.clear()
 	
-	if not show_stops or step <= 0:
+	if not show_stops:
+		_cached_stops_valid = true
+		return _cached_stops
+	
+	# Use custom stops if provided
+	if custom_stop_values.size() > 0:
+		for stop in custom_stop_values:
+			if stop >= min_value and stop <= max_value:
+				# Deduplicate visually identical stops
+				var is_duplicate = false
+				for existing in _cached_stops:
+					if is_equal_approx(stop, existing):
+						is_duplicate = true
+						break
+				if not is_duplicate:
+					_cached_stops.append(stop)
+		_cached_stops_valid = true
+		return _cached_stops
+	
+	# Fall back to uniform step-based stops
+	if step <= 0:
 		_cached_stops_valid = true
 		return _cached_stops
 	
@@ -846,7 +927,12 @@ func _get_stop_positions() -> Array[float]:
 		_cached_stops_valid = true
 		return _cached_stops
 	
-	var count = int(range_val / step)
+	var count = roundi(range_val / step)
+	if count <= 1:
+		# Even with only 2 values, show start and end as stops
+		_cached_stops = [min_value, max_value]
+		_cached_stops_valid = true
+		return _cached_stops
 	if count > 50:
 		_cached_stops_valid = true
 		return _cached_stops  # Too many stops
@@ -857,6 +943,21 @@ func _get_stop_positions() -> Array[float]:
 	
 	_cached_stops_valid = true
 	return _cached_stops
+
+func _snap_to_nearest_stop(raw_value: float) -> float:
+	"""Snap a raw value to the nearest custom stop, or to step if no custom stops."""
+	if custom_stop_values.size() > 0:
+		var nearest = custom_stop_values[0]
+		var nearest_dist = abs(raw_value - nearest)
+		for stop in custom_stop_values:
+			var dist = abs(raw_value - stop)
+			if dist < nearest_dist:
+				nearest_dist = dist
+				nearest = stop
+		return clampf(nearest, min_value, max_value)
+	elif step > 0:
+		return clampf(snappedf(raw_value, step), min_value, max_value)
+	return clampf(raw_value, min_value, max_value)
 
 # ============================================
 # CUSTOM DRAWING
@@ -936,7 +1037,7 @@ func _draw_standard_active_track():
 	var out_radius = _get_track_radius()
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = _get_disabled_color(M3Theme.get_primary())
+	var color = _get_disabled_color(_get_accent())
 	var handle_axis = _cached_handle_axis
 	
 	if _is_vertical():
@@ -958,7 +1059,7 @@ func _draw_centered_active_track():
 	var track_rect = _cached_track_rect
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = _get_disabled_color(M3Theme.get_primary())
+	var color = _get_disabled_color(_get_accent())
 	var zero_axis = _get_axis_position(0.0)
 	var handle_axis = _cached_handle_axis
 	
@@ -1005,7 +1106,7 @@ func _draw_range_active_track():
 	var track_rect = _cached_track_rect
 	var in_radius = M3Units.dp(INSIDE_CORNER_SIZE)
 	var gap = M3Units.dp(THUMB_TRACK_GAP)
-	var color = _get_disabled_color(M3Theme.get_primary())
+	var color = _get_disabled_color(_get_accent())
 	
 	var val1 = _cached_handle_axis
 	var val2 = _get_axis_position(range_value)
@@ -1035,7 +1136,7 @@ func _draw_stops():
 		return
 	
 	var stops = _get_stop_positions()
-	if stops.size() <= 2:
+	if stops.size() == 0:
 		return
 	
 	var stop_size = _get_stop_size()
@@ -1067,9 +1168,11 @@ func _draw_stops():
 			), color)
 
 func _draw_end_indicator():
-	"""Draw end-of-track indicator dot at max value position. Not shown on discrete sliders."""
-	if _get_stop_positions().size() > 0:
-		return
+	"""Draw end-of-track indicator dot at max value position."""
+	# Only skip if a stop is already drawn at the exact end
+	for stop in _get_stop_positions():
+		if is_equal_approx(stop, max_value):
+			return
 	
 	var track_rect = _cached_track_rect
 	var stop_size = _get_stop_size()
@@ -1113,7 +1216,7 @@ func _draw_primary_handle():
 	var handle_pos = _get_handle_position(value)
 	var handle_w = _get_handle_w()
 	var handle_h = _get_handle_h()
-	var color = _get_disabled_color(M3Theme.get_primary())
+	var color = _get_disabled_color(_get_accent())
 	
 	if _is_vertical():
 		# Vertical: thin horizontal bar
@@ -1136,7 +1239,7 @@ func _draw_range_handle():
 	var handle_pos = _get_handle_position(range_value)
 	var handle_w = _get_handle_w()
 	var handle_h = _get_handle_h()
-	var prim = _get_disabled_color(M3Theme.get_primary())
+	var prim = _get_disabled_color(_get_accent())
 	var surf = _get_disabled_color(M3Theme.get_surface())
 	
 	if _is_vertical():

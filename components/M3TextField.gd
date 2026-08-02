@@ -91,6 +91,15 @@ enum Variant { FILLED, OUTLINED }
 @export var m3_tooltip_text: String = ""
 @export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
+@export var accent_color: Color = Color.TRANSPARENT:
+	set(value):
+		if value == accent_color:
+			return
+		accent_color = value
+		if _ready_called:
+			_update_theme()
+			queue_redraw()
+
 # ============================================
 # SIGNALS
 # ============================================
@@ -143,6 +152,7 @@ var _cached_empty_readonly: StyleBoxEmpty
 var _updating_layout: bool = false
 var _cached_fonts: Dictionary = {}
 var _font_icon_template: FontIconSettings = null
+var _stored_placeholder: String = ""
 
 # ============================================
 # LIFECYCLE
@@ -313,6 +323,17 @@ func set_menu_active(active: bool):
 	_update_layout()
 	queue_redraw()
 
+func refresh_visuals() -> void:
+	"""Public helper to re-evaluate floating label and supporting text after
+	external value changes (programmatic text assignment does not emit
+	text_changed, so the visual state must be refreshed explicitly)."""
+	if not _ready_called:
+		return
+	_update_floating_label()
+	_update_supporting_text()
+	_update_layout()
+	queue_redraw()
+
 func _on_text_changed(_new_text: String):
 	_update_floating_label()
 	_update_layout()
@@ -336,7 +357,7 @@ func _draw():
 		border_color = M3Theme.get_error()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
 	elif _is_focused or _menu_active:
-		border_color = M3Theme.get_primary()
+		border_color = _get_accent()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
 	elif not editable:
 		border_color = M3Theme.disabled_color(M3Theme.get_outline())
@@ -355,11 +376,6 @@ func _draw():
 	else:
 		_draw_outlined(rect, border_color, border_width)
 	
-	# TODO: Focus ring behavior temporarily disabled — revisit with cleaner
-	# implementation that doesn't overlap with floating label patch
-	# if _is_focused and not _menu_active:
-	#     _draw_focus_ring(rect)
-
 func _draw_filled(rect: Rect2, border_color: Color, border_width: float):
 	var line_y = rect.position.y + rect.size.y - border_width / 2.0
 	draw_line(
@@ -389,7 +405,7 @@ func _draw_outlined(rect: Rect2, border_color: Color, border_width: float):
 			_cached_patch_sb.draw(get_canvas_item(), patch_rect)
 
 func _draw_focus_ring(rect: Rect2):
-	var ring_color = M3Theme.get_primary()
+	var ring_color = _get_accent()
 	var ring_width = M3Units.dp(1)
 	
 	_cached_focus_ring_sb.border_color = ring_color
@@ -444,8 +460,22 @@ func _get_font_icon_settings() -> FontIconSettings:
 		_font_icon_template.icon_font = "MaterialIcons"
 	return _font_icon_template.duplicate()
 
+func _get_accent() -> Color:
+	return accent_color if accent_color != Color.TRANSPARENT else M3Theme.get_primary()
+
+func _get_accent_container() -> Color:
+	if accent_color != Color.TRANSPARENT:
+		# Derive a container color from accent: same hue/sat, but blend toward surface brightness
+		var surface = M3Theme.get_surface()
+		var blended = accent_color.lerp(surface, 0.6)
+		blended.a = 1.0
+		return blended
+	return M3Theme.get_primary_container()
+
 func _update_theme():
 	var has_error = not error_text.is_empty()
+	if _cached_fonts.is_empty():
+		_cached_fonts = M3Theme.load_fonts()
 	var fonts = _cached_fonts
 	
 	# Input text styling (native LineEdit)
@@ -457,8 +487,8 @@ func _update_theme():
 	
 	add_theme_color_override("font_color", input_color)
 	add_theme_color_override("font_placeholder_color", M3Theme.get_on_surface_variant())
-	add_theme_color_override("caret_color", M3Theme.get_primary())
-	add_theme_color_override("selection_color", M3Theme.get_primary_container())
+	add_theme_color_override("caret_color", _get_accent())
+	add_theme_color_override("selection_color", _get_accent_container())
 	add_theme_font_override("font", fonts["regular"])
 	add_theme_font_size_override("font_size", M3Units.dp(INPUT_FONT_SIZE))
 	
@@ -469,21 +499,24 @@ func _update_theme():
 	elif has_error:
 		label_color = M3Theme.get_error()
 	elif _is_focused or _menu_active:
-		label_color = M3Theme.get_primary()
+		label_color = _get_accent()
 	else:
 		label_color = M3Theme.get_on_surface_variant()
 	
-	_floating_label.add_theme_color_override("font_color", label_color)
-	_floating_label.add_theme_font_override("font", fonts["regular"])
+	if _floating_label:
+		_floating_label.add_theme_color_override("font_color", label_color)
+		_floating_label.add_theme_font_override("font", fonts["regular"])
 	
 	# Prefix/suffix colors
-	_prefix_label.add_theme_color_override("font_color", input_color)
-	_prefix_label.add_theme_font_override("font", fonts["regular"])
-	_prefix_label.add_theme_font_size_override("font_size", M3Units.dp(INPUT_FONT_SIZE))
+	if _prefix_label:
+		_prefix_label.add_theme_color_override("font_color", input_color)
+		_prefix_label.add_theme_font_override("font", fonts["regular"])
+		_prefix_label.add_theme_font_size_override("font_size", M3Units.dp(INPUT_FONT_SIZE))
 	
-	_suffix_label.add_theme_color_override("font_color", input_color)
-	_suffix_label.add_theme_font_override("font", fonts["regular"])
-	_suffix_label.add_theme_font_size_override("font_size", M3Units.dp(INPUT_FONT_SIZE))
+	if _suffix_label:
+		_suffix_label.add_theme_color_override("font_color", input_color)
+		_suffix_label.add_theme_font_override("font", fonts["regular"])
+		_suffix_label.add_theme_font_size_override("font_size", M3Units.dp(INPUT_FONT_SIZE))
 	
 	# Icon colors
 	var icon_color = M3Theme.disabled_color(M3Theme.get_on_surface_variant()) if not editable else M3Theme.get_on_surface_variant()
@@ -501,9 +534,10 @@ func _update_theme():
 	else:
 		supporting_color = M3Theme.get_on_surface_variant()
 	
-	_supporting_label.add_theme_color_override("font_color", supporting_color)
-	_supporting_label.add_theme_font_override("font", fonts["regular"])
-	_supporting_label.add_theme_font_size_override("font_size", M3Units.dp(SUPPORTING_FONT_SIZE))
+	if _supporting_label:
+		_supporting_label.add_theme_color_override("font_color", supporting_color)
+		_supporting_label.add_theme_font_override("font", fonts["regular"])
+		_supporting_label.add_theme_font_size_override("font_size", M3Units.dp(SUPPORTING_FONT_SIZE))
 
 func _update_layout():
 	if _updating_layout:
@@ -613,10 +647,26 @@ func _update_floating_label():
 	
 	if label_text.is_empty():
 		_floating_label.visible = false
+		# Restore native placeholder when no floating label
+		if not _stored_placeholder.is_empty():
+			placeholder_text = _stored_placeholder
+			_stored_placeholder = ""
 		return
 	
 	_floating_label.visible = true
 	_floating_label.text = label_text
+	
+	# When floating label acts as placeholder (not floated), suppress native placeholder to avoid overlap
+	var should_float = _should_float_label()
+	if not should_float:
+		# Store current placeholder before clearing
+		if not placeholder_text.is_empty():
+			_stored_placeholder = placeholder_text
+			placeholder_text = ""
+	elif not _stored_placeholder.is_empty():
+		# Restore native placeholder when label floats above
+		placeholder_text = _stored_placeholder
+		_stored_placeholder = ""
 	
 	if _ready_called:
 		_update_layout()
@@ -702,7 +752,12 @@ func _get_minimum_size() -> Vector2:
 # PUBLIC
 # ============================================
 
+func is_virtual_keyboard_enabled() -> bool:
+	return true
+
 func refresh_theme():
+	if not _ready_called:
+		return
 	_update_theme()
 	_update_layout()
 	queue_redraw()

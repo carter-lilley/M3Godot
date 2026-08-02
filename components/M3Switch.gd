@@ -5,7 +5,7 @@ extends CheckButton
 ## Material 3 Switch
 ## Custom-drawn toggle switch with optional thumb icon.
 ## Extends CheckButton for native input/behavior.
-## Uses FontIcon node for thumb icons (icons-fonts addon).
+## NOTE: This component does NOT support text. Use an M3Label alongside the switch instead.
 
 # ============================================
 # SIZE SPECS (all values in dp)
@@ -34,6 +34,13 @@ const THUMB_PADDING := 4.0  # Minimum padding from track edge (dp)
 @export var m3_tooltip_text: String = ""
 @export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
+@export var accent_color: Color = Color.TRANSPARENT:
+	set(value):
+		if value == accent_color:
+			return
+		accent_color = value
+		queue_redraw()
+
 # ============================================
 # INTERNAL
 # ============================================
@@ -56,8 +63,15 @@ func _enter_tree():
 	M3Theme.hide_native_checkbutton_styleboxes(self)
 	M3Theme.hide_native_check_icons(self)
 
+func _set(property: StringName, value: Variant) -> bool:
+	if property == &"text":
+		if value is String and not value.is_empty():
+			push_warning("M3Switch does not support text. Use an M3Label alongside the switch instead.")
+		# Reject text by returning true without setting the property
+		return true
+	return false
+
 func _ready():
-	# Set fixed size - never expand in containers
 	var track_width_px = M3Units.dp(TRACK_WIDTH)
 	var track_height_px = M3Units.dp(TRACK_HEIGHT)
 	custom_minimum_size = Vector2(track_width_px, track_height_px)
@@ -150,7 +164,8 @@ func _initialize_icon():
 func _update_icon():
 	if not _icon_node:
 		return
-	_icon_node.icon_settings.icon_name = icon_name
+	if not icon_name.is_empty():
+		_icon_node.icon_settings.icon_name = icon_name
 	_icon_node.visible = not icon_name.is_empty()
 
 # ============================================
@@ -160,7 +175,10 @@ func _update_icon():
 func _draw():
 	var track_width_px = M3Units.dp(TRACK_WIDTH)
 	var track_height_px = M3Units.dp(TRACK_HEIGHT)
-	var track_rect = Rect2(Vector2((size.x - track_width_px) / 2.0, (size.y - track_height_px) / 2.0), Vector2(track_width_px, track_height_px))
+	var track_rect = Rect2(
+		Vector2((size.x - track_width_px) / 2.0, (size.y - track_height_px) / 2.0),
+		Vector2(track_width_px, track_height_px)
+	)
 	var is_on = button_pressed
 	var is_disabled = disabled
 	
@@ -205,7 +223,7 @@ func _draw_track(rect: Rect2, is_on: bool, is_disabled: bool):
 	if is_disabled:
 		if is_on:
 			# Disabled ON: very subtle primary
-			var prim = M3Theme.get_primary()
+			var prim = _get_accent()
 			_track_sb.bg_color = Color(prim.r, prim.g, prim.b, 0.12)
 			_track_sb.set_border_width_all(0)
 		else:
@@ -216,7 +234,7 @@ func _draw_track(rect: Rect2, is_on: bool, is_disabled: bool):
 			_track_sb.border_color = Color(outl.r, outl.g, outl.b, 0.12)
 			_track_sb.set_border_width_all(1)
 	elif is_on:
-		_track_sb.bg_color = M3Theme.get_primary()
+		_track_sb.bg_color = _get_accent()
 		_track_sb.set_border_width_all(0)
 	else:
 		_track_sb.bg_color = M3Theme.get_surface_container()
@@ -230,10 +248,10 @@ func _draw_thumb(rect: Rect2, thumb_size_px: float, is_on: bool, is_disabled: bo
 	var thumb_radius = thumb_size_px / 2.0
 	var pad_px = M3Units.dp(THUMB_PADDING)
 	
-	# Calculate thumb position
-	var min_x = pad_px + thumb_radius
-	var max_x = rect.size.x - pad_px - thumb_radius
-	var center_y = rect.size.y / 2.0
+	# Calculate thumb position in control-local coordinates
+	var min_x = rect.position.x + pad_px + thumb_radius
+	var max_x = rect.position.x + rect.size.x - pad_px - thumb_radius
+	var center_y = rect.position.y + rect.size.y / 2.0
 	
 	var center_x: float
 	if is_on:
@@ -260,7 +278,7 @@ func _draw_thumb(rect: Rect2, thumb_size_px: float, is_on: bool, is_disabled: bo
 	if _hovered and not is_disabled:
 		var overlay_color: Color
 		if is_on:
-			overlay_color = M3Theme.get_primary()
+			overlay_color = _get_accent()
 		else:
 			overlay_color = M3Theme.get_on_surface()
 		base_color = M3Theme.state_overlay(base_color, overlay_color, M3Theme.OPACITY_HOVER)
@@ -287,11 +305,14 @@ func _update_icon_position(thumb_center: Vector2, thumb_size_px: float, is_on: b
 		var on_surf_var = M3Theme.get_on_surface_variant()
 		icon_color = Color(on_surf_var.r, on_surf_var.g, on_surf_var.b, 0.38)
 	elif is_on:
-		icon_color = M3Theme.get_primary()
+		icon_color = _get_accent()
 	else:
 		icon_color = M3Theme.get_on_surface_variant()
 	
 	_icon_node.icon_settings.icon_color = icon_color
+
+func _get_accent() -> Color:
+	return accent_color if accent_color != Color.TRANSPARENT else M3Theme.get_primary()
 
 # ============================================
 # THEME

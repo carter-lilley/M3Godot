@@ -1,14 +1,15 @@
 @tool
 class_name M3ButtonGroup
-extends HBoxContainer
+extends BoxContainer
 
 ## Material 3 Button Group Component
 ## Manages M3Button and M3IconButton children as a cohesive group.
 ## Supports standard (spaced) and connected visual modes,
 ## single-select and multi-select interaction modes, and round/square shapes.
+## Supports both horizontal and vertical orientations.
 
 enum Mode { STANDARD, CONNECTED }
-enum SelectMode { SINGLE, MULTI }
+enum SelectMode { SINGLE, MULTI, NONE }
 enum Shape { ROUND, SQUARE }
 
 # ============================================
@@ -126,12 +127,13 @@ func _scan_buttons():
 			_connect_button(child)
 
 func _is_valid_button(node: Node) -> bool:
-	return node is M3Button or node is M3IconButton
+	return node is M3Button or node is M3IconButton or node is Button
 
 func _connect_button(btn: Button):
-	# Ensure toggle mode for group behavior
-	if btn is M3Button and btn.button_type != M3Button.Type.TOGGLE:
-		btn.button_type = M3Button.Type.TOGGLE
+	# Ensure toggle mode for group behavior (unless in NONE mode)
+	if select_mode != SelectMode.NONE:
+		if btn is M3Button and btn.button_type != M3Button.Type.TOGGLE:
+			btn.button_type = M3Button.Type.TOGGLE
 	
 	if not _button_callables.has(btn):
 		var callable = _on_button_pressed.bind(btn)
@@ -158,6 +160,9 @@ func _on_child_exiting(node: Node):
 		var removed_idx = _buttons.find(node)
 		_buttons.erase(node)
 		_disconnect_button(node)
+		
+		if select_mode == SelectMode.NONE:
+			return
 		
 		# Adjust selected indices after removal
 		var new_selection: Array[int] = []
@@ -204,6 +209,9 @@ func _on_button_pressed(btn: Button):
 				_selected_indices.append(index)
 			_update_button_states()
 			selection_changed.emit(_selected_indices.duplicate())
+		SelectMode.NONE:
+			# Normal push button behavior — just emit with empty selection
+			selection_changed.emit([])
 
 func _apply_initial_selection():
 	_selected_indices.clear()
@@ -223,6 +231,8 @@ func _apply_initial_selection():
 			for idx in initial_selection:
 				if idx >= 0 and idx < _buttons.size() and idx not in _selected_indices:
 					_selected_indices.append(idx)
+		SelectMode.NONE:
+			pass  # No selection tracking in NONE mode
 	
 	_update_button_states()
 
@@ -231,6 +241,9 @@ func _ensure_valid_selection():
 		_apply_initial_selection()
 
 func _update_button_states():
+	if select_mode == SelectMode.NONE:
+		return
+	
 	for i in range(_buttons.size()):
 		var btn = _buttons[i]
 		var should_be_pressed = i in _selected_indices
@@ -242,10 +255,10 @@ func _update_button_states():
 # ============================================
 
 func _get_button_size_index(btn: Button) -> int:
-	if btn is M3Button:
-		return int(btn.button_size)
-	elif btn is M3IconButton:
+	if btn is M3IconButton:
 		return int(btn.icon_button_size)
+	elif btn is M3Button:
+		return int(btn.button_size)
 	return 2  # Default to MEDIUM
 
 # ============================================
@@ -295,47 +308,92 @@ func _update_connected_corners():
 			# Round connected: outer = fully round (pill), inner = listed size
 			var outer_radius = _get_pill_radius(btn)
 			
-			if i == 0:
-				# First button: round left side
-				tl = outer_radius
-				bl = outer_radius
-				# Right side: inner corner size
-				tr = inner_radius
-				br = inner_radius
-			elif i == count - 1:
-				# Last button: round right side
-				tr = outer_radius
-				br = outer_radius
-				# Left side: inner corner size
-				tl = inner_radius
-				bl = inner_radius
+			if vertical:
+				# Vertical: first=top, last=bottom
+				if i == 0:
+					# First button: round top side
+					tl = outer_radius
+					tr = outer_radius
+					# Bottom side: inner corner size
+					bl = inner_radius
+					br = inner_radius
+				elif i == count - 1:
+					# Last button: round bottom side
+					bl = outer_radius
+					br = outer_radius
+					# Top side: inner corner size
+					tl = inner_radius
+					tr = inner_radius
+				else:
+					# Middle buttons: inner corner size on all corners
+					tl = inner_radius
+					tr = inner_radius
+					bl = inner_radius
+					br = inner_radius
 			else:
-				# Middle buttons: inner corner size on all corners
-				tl = inner_radius
-				tr = inner_radius
-				bl = inner_radius
-				br = inner_radius
+				# Horizontal: first=left, last=right
+				if i == 0:
+					# First button: round left side
+					tl = outer_radius
+					bl = outer_radius
+					# Right side: inner corner size
+					tr = inner_radius
+					br = inner_radius
+				elif i == count - 1:
+					# Last button: round right side
+					tr = outer_radius
+					br = outer_radius
+					# Left side: inner corner size
+					tl = inner_radius
+					bl = inner_radius
+				else:
+					# Middle buttons: inner corner size on all corners
+					tl = inner_radius
+					tr = inner_radius
+					bl = inner_radius
+					br = inner_radius
 		else:
 			# Square connected: outer = listed size, inner = 0 (square)
 			var outer_radius = inner_radius  # Same lookup for square outer
 			
-			if i == 0:
-				# First button: outer size on left, 0 on right
-				tl = outer_radius
-				bl = outer_radius
-				# Right side: square (0)
-				tr = 0
-				br = 0
-			elif i == count - 1:
-				# Last button: outer size on right, 0 on left
-				tr = outer_radius
-				br = outer_radius
-				# Left side: square (0)
-				tl = 0
-				bl = 0
+			if vertical:
+				# Vertical: first=top, last=bottom
+				if i == 0:
+					# First button: outer size on top, 0 on bottom
+					tl = outer_radius
+					tr = outer_radius
+					# Bottom side: square (0)
+					bl = 0
+					br = 0
+				elif i == count - 1:
+					# Last button: outer size on bottom, 0 on top
+					bl = outer_radius
+					br = outer_radius
+					# Top side: square (0)
+					tl = 0
+					tr = 0
+				else:
+					# Middle buttons: all square (0)
+					pass  # All remain 0
 			else:
-				# Middle buttons: all square (0)
-				pass  # All remain 0
+				# Horizontal: first=left, last=right
+				if i == 0:
+					# First button: outer size on left, 0 on right
+					tl = outer_radius
+					bl = outer_radius
+					# Right side: square (0)
+					tr = 0
+					br = 0
+				elif i == count - 1:
+					# Last button: outer size on right, 0 on left
+					tr = outer_radius
+					br = outer_radius
+					# Left side: square (0)
+					tl = 0
+					bl = 0
+				else:
+					# Middle buttons: all square (0)
+					pass  # All remain 0
 		
 		_set_button_corners(btn, tl, tr, bl, br)
 
