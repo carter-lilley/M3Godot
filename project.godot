@@ -11,18 +11,13 @@ config_version=5
 [application]
 
 config/name="M3Godot"
-run/main_scene="res://theme_browser.tscn"
+run/main_scene="res://examples/theme_browser.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
-addons/icon_finder/preview_size=24
-
-[autoload]
-
-IconsFonts="*uid://b573s24lmntbd"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/icons-fonts/plugin.cfg", "res://addons/m3/plugin.cfg")
+enabled=PackedStringArray()
 
 [input]
 
