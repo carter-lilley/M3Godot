@@ -245,6 +245,9 @@ var _visual_layer_rid: RID = RID()
 var _base_visual_draw_index: int = 0
 var _visual_bg_canvas_item: RID = RID()
 var _visuals_position_synced: bool = false
+# Last transform written to the visual RS items by sync_visual_transform().
+# Diagnostic: lets the owning grid verify rendered state against layout truth.
+var _last_visual_transform := Transform2D()
 
 var _applied_headline_size_dp: float = -1.0
 var _applied_supporting_size_dp: float = -1.0
@@ -406,6 +409,8 @@ func sync_visual_transform() -> void:
 		var pivot := size * 0.5
 		base_transform = base_transform * Transform2D().translated(pivot) * Transform2D().scaled(content_scale) * Transform2D().translated(-pivot)
 
+	_last_visual_transform = base_transform
+
 	if _visual_bg_canvas_item.is_valid():
 		RenderingServer.canvas_item_set_transform(_visual_bg_canvas_item, base_transform)
 
@@ -425,6 +430,12 @@ func _mark_visuals_position_synced() -> void:
 	if _visuals_position_synced:
 		return
 	_visuals_position_synced = true
+	_update_visual_items_visibility()
+
+func _unmark_visuals_position_synced() -> void:
+	if not _visuals_position_synced:
+		return
+	_visuals_position_synced = false
 	_update_visual_items_visibility()
 
 func set_visual_draw_index(base_index: int) -> void:
