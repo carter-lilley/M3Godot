@@ -248,6 +248,11 @@ var _visuals_position_synced: bool = false
 # Last transform written to the visual RS items by sync_visual_transform().
 # Diagnostic: lets the owning grid verify rendered state against layout truth.
 var _last_visual_transform := Transform2D()
+# Last layer-space offset provided by the owning grid's slot arithmetic. The
+# measured sync path prefers this over reading global_position so all stamp
+# writers share one truth. Cleared on tree re-entry until the grid re-stamps.
+var _last_grid_offset := Vector2.ZERO
+var _has_grid_offset: bool = false
 
 var _applied_headline_size_dp: float = -1.0
 var _applied_supporting_size_dp: float = -1.0
@@ -392,17 +397,29 @@ func _reparent_visual_items() -> void:
 		RenderingServer.canvas_item_set_parent(_focus_ring_canvas_item, parent_rid)
 
 func sync_visual_transform() -> void:
-	"""Sync visual RS item positions to the card's global transform and focus scale.
+	"""Sync visual RS item positions to the card's transform and focus scale.
 
-	Called when the card moves, scrolls, or its focus scale changes. The card
-	Control itself stays clipped; only the visual canvas items are moved.
-	"""
+	When the owning grid has provided a slot-arithmetic offset, prefer it over
+	measuring global_position: the grid stamps render-fresh values every frame
+	(pre-draw), while measured globals are stale before the transform flush —
+	two writers with different truths is what made cards jitter by a few px."""
+	if not _visual_layer or not _visual_layer.is_inside_tree() or not is_inside_tree():
+		return
+	if _has_grid_offset:
+		sync_visual_transform_with_offset(_last_grid_offset)
+	else:
+		sync_visual_transform_with_offset(global_position - _visual_layer.global_position)
+
+func sync_visual_transform_with_offset(base_offset: Vector2) -> void:
+	"""Stamp visual RS items at a caller-provided layer-space offset instead of
+	measuring the Control's global transform. The owning grid uses this to
+	position cards from its slot arithmetic, which is immune to the engine's
+	transform-propagation flush ordering (measured globals are stale pre-flush)."""
 	if not _visual_layer or not _visual_layer.is_inside_tree() or not is_inside_tree():
 		return
 
-	var layer_global := _visual_layer.global_position
-	var card_global := global_position
-	var base_offset := card_global - layer_global
+	_last_grid_offset = base_offset
+	_has_grid_offset = true
 
 	var base_transform := Transform2D().translated(base_offset)
 	if not content_scale.is_equal_approx(Vector2.ONE):
@@ -576,6 +593,7 @@ func _enter_tree():
 	if not _ready_called:
 		return
 	_visuals_position_synced = false
+	_has_grid_offset = false
 	var missing := false
 	if not _media_canvas_item.is_valid() or not _focus_ring_canvas_item.is_valid():
 		missing = true
@@ -1296,10 +1314,13 @@ func _update_media_panel_size(force: bool = false) -> void:
 	
 	_media_bounds = Rect2(media_x, media_y, media_w, media_h)
 	_text_bounds = Rect2(text_x, text_y, text_w, text_h)
-	
-	if _media_canvas_item.is_valid():
+
+	# Cards without a visual layer render media in their own canvas and need the
+	# local offset here. Visual-layer cards must NOT be written directly: the
+	# correct layer-space transform is set by sync_visual_transform() below.
+	if _media_canvas_item.is_valid() and not _uses_visual_layer():
 		RenderingServer.canvas_item_set_transform(_media_canvas_item, Transform2D().translated(_media_bounds.position))
-	
+
 	var pad = M3Units.dp(PADDING)
 	var half_pad = M3Units.dp(PADDING / 2.0)
 	var text_visible := show_text_margin
