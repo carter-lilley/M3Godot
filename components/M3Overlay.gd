@@ -43,6 +43,8 @@ var _restore_focus_on_dismiss: bool = false
 var _summoner_focus: WeakRef = null
 var _focus_restore_fallback: Callable = Callable()
 
+var participates_in_dismiss_stack: bool = true
+
 # ============================================
 # SIGNALS
 # ============================================
@@ -140,7 +142,7 @@ func show_overlay():
 	if previous != null and previous != self:
 		previous.dismiss()
 	_set_active_node(overlay_type, self)
-	if overlay_layer > _max_layer:
+	if participates_in_dismiss_stack and overlay_layer > _max_layer:
 		_max_layer = overlay_layer
 	if _restore_focus_on_dismiss:
 		_summoner_focus = UIManager.capture_focus() if UIManager else null
@@ -153,12 +155,7 @@ func dismiss():
 		_active.erase(overlay_type)
 	# Recalculate max layer if we were the highest
 	if overlay_layer >= _max_layer:
-		_max_layer = 0
-		_cleanup_stale_entries()
-		for type in _active.keys():
-			var overlay = _get_active_node(type)
-			if overlay != null and overlay.overlay_layer > _max_layer:
-				_max_layer = overlay.overlay_layer
+		_recalculate_max_layer()
 	# Hide before emitting dismissed so focus callbacks can't pull focus back
 	# into this overlay while it's still marked visible.
 	visible = false
@@ -189,6 +186,14 @@ static func dismiss_type(type: String):
 	if overlay != null:
 		overlay.dismiss()
 
+static func _recalculate_max_layer() -> void:
+	_max_layer = 0
+	_cleanup_stale_entries()
+	for type in _active.keys():
+		var overlay = _get_active_node(type)
+		if overlay != null and overlay.participates_in_dismiss_stack and overlay.overlay_layer > _max_layer:
+			_max_layer = overlay.overlay_layer
+
 # Return the topmost active interactive overlay, or null if none.
 static func _get_topmost_overlay() -> M3Overlay:
 	_cleanup_stale_entries()
@@ -204,7 +209,7 @@ static func _get_topmost_overlay() -> M3Overlay:
 # ============================================
 
 func _input(event: InputEvent):
-	if not visible:
+	if not visible or not participates_in_dismiss_stack:
 		return
 	if event.is_action_pressed("ui_cancel"):
 		# Only dismiss if we're the highest-layer active overlay

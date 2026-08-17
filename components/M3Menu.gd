@@ -234,11 +234,7 @@ func dismiss():
 		_active.erase(overlay_type)
 	# Recalculate max layer so lower-layer overlays can dismiss properly
 	if overlay_layer >= _max_layer:
-		_max_layer = 0
-		for type in _active.keys():
-			var overlay = _get_active_node(type)
-			if is_instance_valid(overlay) and overlay.overlay_layer > _max_layer:
-				_max_layer = overlay.overlay_layer
+		_recalculate_max_layer()
 	if _renderer and _renderer.focus_changed.is_connected(_on_focus_changed):
 		_renderer.focus_changed.disconnect(_on_focus_changed)
 	if _renderer and _renderer.submenu_requested.is_connected(_on_submenu_requested):
