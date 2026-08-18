@@ -34,7 +34,7 @@ enum Size { SMALL, LARGE }
 		if clamped == value:
 			return
 		value = clamped
-		queue_redraw()
+		_animate_value()
 
 @export var max_value: float = 100.0:
 	set(p_value):
@@ -67,6 +67,28 @@ var _cached_min_size_dirty: bool = true
 
 var _cap_stylebox: StyleBoxFlat
 var _endpoint_stylebox: StyleBoxFlat
+
+var _display_value: float = 0.0
+var _value_tween: Tween = null
+
+func _animate_value() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree() or indeterminate:
+		_display_value = value
+		queue_redraw()
+		return
+	if _value_tween and _value_tween.is_valid():
+		_value_tween.kill()
+	var start: float = _display_value
+	var target: float = value
+	_value_tween = create_tween()
+	_value_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	_value_tween.set_ease(M3Motion.EASE_FADE)
+	_value_tween.tween_method(
+		func(t: float):
+			_display_value = lerpf(start, target, t)
+			queue_redraw(),
+		0.0, 1.0, M3Motion.OVERLAY
+	)
 
 # ============================================
 # LIFECYCLE
@@ -131,7 +153,7 @@ func _draw_linear():
 		start_x = rect_size_x * _indet_start
 		end_x = rect_size_x * _indet_end
 	else:
-		var fraction = value / max_value
+		var fraction = _display_value / max_value
 		start_x = 0.0
 		end_x = rect_size_x * fraction
 	
@@ -187,7 +209,7 @@ func _draw_circular():
 		end_fraction = _indet_end
 	else:
 		start_fraction = 0.0
-		end_fraction = value / max_value
+		end_fraction = _display_value / max_value
 	
 	var fraction = end_fraction - start_fraction
 	

@@ -53,6 +53,10 @@ var _focus_sb: StyleBoxFlat
 var _icon_node: FontIcon
 var _font_icon_template: FontIconSettings = null
 
+var _thumb_pos: float = 0.0
+var _thumb_size_px: float = 0.0
+var _thumb_tween: Tween = null
+
 # ============================================
 # LIFECYCLE
 # ============================================
@@ -89,6 +93,8 @@ func _ready():
 	
 	_initialize_styleboxes()
 	_initialize_icon()
+	_thumb_pos = 1.0 if button_pressed else 0.0
+	_thumb_size_px = M3Units.dp(THUMB_ON_SIZE if button_pressed else THUMB_OFF_SIZE)
 	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
 
 func _exit_tree():
@@ -99,14 +105,48 @@ func _get_minimum_size() -> Vector2:
 
 func _on_button_down():
 	_is_pressing = true
+	_animate_thumb()
 	queue_redraw()
 
 func _on_button_up():
 	_is_pressing = false
+	_animate_thumb()
 	queue_redraw()
 
 func _on_toggled(_v: bool):
+	_animate_thumb()
 	queue_redraw()
+
+func _animate_thumb() -> void:
+	var target_pos: float = 1.0 if button_pressed else 0.0
+	var target_size_dp: float
+	if _is_pressing:
+		target_size_dp = THUMB_PRESSED_SIZE
+	elif button_pressed:
+		target_size_dp = THUMB_ON_SIZE
+	else:
+		target_size_dp = THUMB_OFF_SIZE
+	var target_size: float = M3Units.dp(target_size_dp)
+	if Engine.is_editor_hint() or not is_inside_tree():
+		_thumb_pos = target_pos
+		_thumb_size_px = target_size
+		return
+	if is_equal_approx(_thumb_pos, target_pos) and is_equal_approx(_thumb_size_px, target_size):
+		return
+	if _thumb_tween and _thumb_tween.is_valid():
+		_thumb_tween.kill()
+	var start_pos: float = _thumb_pos
+	var start_size: float = _thumb_size_px
+	_thumb_tween = create_tween()
+	_thumb_tween.set_trans(M3Motion.EASE_POP_TRANS)
+	_thumb_tween.set_ease(M3Motion.EASE_POP)
+	_thumb_tween.tween_method(
+		func(t: float):
+			_thumb_pos = lerpf(start_pos, target_pos, t)
+			_thumb_size_px = lerpf(start_size, target_size, t)
+			queue_redraw(),
+		0.0, 1.0, M3Motion.EMPHASIZED
+	)
 
 func _on_mouse_entered():
 	_hovered = true
@@ -181,17 +221,11 @@ func _draw():
 	)
 	var is_on = button_pressed
 	var is_disabled = disabled
-	
-	# Determine thumb size
-	var thumb_size_dp: int
-	if _is_pressing:
-		thumb_size_dp = THUMB_PRESSED_SIZE
-	elif is_on:
-		thumb_size_dp = THUMB_ON_SIZE
-	else:
-		thumb_size_dp = THUMB_OFF_SIZE
-	
-	var thumb_size_px = M3Units.dp(thumb_size_dp)
+
+	# Thumb size/position are tweened by _animate_thumb(); read current values
+	var thumb_size_px = _thumb_size_px
+	if thumb_size_px <= 0.0:
+		thumb_size_px = M3Units.dp(THUMB_ON_SIZE if is_on else THUMB_OFF_SIZE)
 	
 	# Draw focus ring first (behind everything)
 	if has_focus() and not is_disabled:
@@ -253,11 +287,7 @@ func _draw_thumb(rect: Rect2, thumb_size_px: float, is_on: bool, is_disabled: bo
 	var max_x = rect.position.x + rect.size.x - pad_px - thumb_radius
 	var center_y = rect.position.y + rect.size.y / 2.0
 	
-	var center_x: float
-	if is_on:
-		center_x = max_x
-	else:
-		center_x = min_x
+	var center_x: float = lerpf(min_x, max_x, _thumb_pos)
 	
 	var thumb_rect = Rect2(
 		Vector2(center_x - thumb_radius, center_y - thumb_radius),

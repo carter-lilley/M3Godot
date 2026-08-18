@@ -111,6 +111,15 @@ func _get_accent() -> Color:
 func _get_variant_colors(_selected: bool) -> Dictionary:
 	return _compute_variant_colors(false)
 
+## FocusSubManager geometry protocol: swatches use a fixed 8dp radius and the
+## accent color rather than the button size specs.
+func m3_get_focus_geometry() -> Dictionary:
+	return {
+		"rect": get_global_rect(),
+		"radius": M3Units.dp(8),
+		"color": _get_accent(),
+	}
+
 func _update_theme():
 	if not _cached_style_normal:
 		return
@@ -138,8 +147,8 @@ func _update_theme():
 	# Disabled state
 	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, 0, 0, false, border_w, border_c)
 	
-	# Focus state
-	_configure_stylebox(_cached_style_focus, bg, radius, 0, 0, false, 3, focus_border)
+	# Focus state (bg only — the ring is drawn globally by FocusSubManager)
+	_configure_stylebox(_cached_style_focus, bg, radius, 0, 0, false, 0, focus_border)
 	
 	# Hide text colors (no text in color picker)
 	add_theme_color_override("font_color", Color.TRANSPARENT)
@@ -201,6 +210,24 @@ func _show_popup():
 		popup_pos.y = int(global_position.y - popup_size.y - M3Units.dp(4))
 	
 	_popup.popup(Rect2i(popup_pos, Vector2i(0, 0)))
+	_animate_popup()
+
+var _popup_tween: Tween = null
+
+func _animate_popup() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree() or not _picker:
+		return
+	_picker.pivot_offset = Vector2.ZERO
+	_picker.scale = Vector2.ONE * 0.9
+	_picker.modulate.a = 0.0
+	if _popup_tween and _popup_tween.is_valid():
+		_popup_tween.kill()
+	_popup_tween = create_tween()
+	_popup_tween.set_parallel(true)
+	_popup_tween.set_trans(M3Motion.EASE_ENTER_TRANS)
+	_popup_tween.set_ease(M3Motion.EASE_ENTER)
+	_popup_tween.tween_property(_picker, "scale", Vector2.ONE, M3Motion.OVERLAY)
+	_popup_tween.tween_property(_picker, "modulate:a", 1.0, M3Motion.OVERLAY)
 
 func _create_popup():
 	_popup = PopupPanel.new()

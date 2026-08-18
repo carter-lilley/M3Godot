@@ -112,6 +112,7 @@ const COMPACT_ICON_SIZES = {
 		_invalidate_color_cache()
 		_update_theme()
 		_update_label()
+		_animate_pill()
 
 # ============================================
 # INTERNAL
@@ -124,6 +125,28 @@ var _long_press_timer: Timer = null
 var _long_press_active: bool = false
 var _draw_sb: StyleBoxFlat
 var _cached_variant_colors: Dictionary = {}
+
+var _pill_t: float = 0.0
+var _pill_tween: Tween = null
+
+func _animate_pill() -> void:
+	var target: float = 1.0 if active else 0.0
+	if Engine.is_editor_hint() or not is_inside_tree():
+		_pill_t = target
+		queue_redraw()
+		return
+	if _pill_tween and _pill_tween.is_valid():
+		_pill_tween.kill()
+	var start: float = _pill_t
+	_pill_tween = create_tween()
+	_pill_tween.set_trans(M3Motion.EASE_POP_TRANS)
+	_pill_tween.set_ease(M3Motion.EASE_POP)
+	_pill_tween.tween_method(
+		func(t: float):
+			_pill_t = lerpf(start, target, t)
+			queue_redraw(),
+		0.0, 1.0, M3Motion.EMPHASIZED
+	)
 
 ## If true, pressing the ui_select action while focused will emit
 ## context_menu_requested. The navigation manager enables this only for
@@ -142,6 +165,7 @@ func _ready():
 	auto_size_vertical = false  # Nav bar controls our vertical sizing
 	
 	super._ready()
+	_pill_t = 1.0 if active else 0.0
 	
 	# Create texture icon overlay for custom shortcut/app icons
 	_icon_texture_node = TextureRect.new()
@@ -368,21 +392,30 @@ func _get_pill_radius() -> float:
 		var indicator_size = maxf(M3Units.dp(32), _get_icon_size_px() + M3Units.dp(16))
 		return indicator_size / 2.0
 
+## FocusSubManager geometry protocol: the ring hugs the indicator pill, not
+## the full destination slot.
+func m3_get_focus_geometry() -> Dictionary:
+	var pill := _get_pill_rect()
+	return {
+		"rect": Rect2(global_position + pill.position, pill.size),
+		"radius": _get_pill_radius(),
+		"color": _get_variant_colors(active).get("focus_border", M3Theme.get_primary()),
+	}
+
 func _draw_pill():
 	var rect = _get_pill_rect()
 	var radius = _get_pill_radius()
 	var has_focus_state = has_focus()
-	var colors = _get_variant_colors(active)
-	var focus_color = colors.focus_border
-	
-	# Draw focus ring (2dp border around pill)
-	if has_focus_state:
-		var focus_rect = rect.grow(M3Units.dp(2))
-		_draw_rounded_rect(focus_rect, focus_color, radius)
-	
-	# Draw active pill
-	if active:
-		_draw_rounded_rect(rect, M3Theme.get_secondary_container(), radius)
+
+	# Draw active pill (scale-pops in/out via _pill_t)
+	if active or _pill_t > 0.01:
+		var pill_color := M3Theme.get_secondary_container()
+		pill_color.a *= clampf(_pill_t, 0.0, 1.0)
+		var pill_rect: Rect2 = rect
+		if _pill_t < 0.999:
+			var center := rect.get_center()
+			pill_rect = Rect2(center - rect.size * _pill_t / 2.0, rect.size * _pill_t)
+		_draw_rounded_rect(pill_rect, pill_color, radius * maxf(_pill_t, 0.001))
 	# Draw hover pill (only if not active)
 	elif _hovered or has_focus_state:
 		var hover_color = M3Theme.get_surface_container().darkened(0.1)
@@ -531,6 +564,7 @@ func _notification(what: int):
 		NOTIFICATION_RESIZED:
 			_update_icon_position()
 			_update_label_position()
+			pivot_offset = size / 2.0
 			queue_redraw()
 		NOTIFICATION_MOUSE_ENTER:
 			_hovered = true

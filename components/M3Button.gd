@@ -118,6 +118,13 @@ var _icon_node: FontIcon
 var _is_pressing: bool = false
 var _menu_active: bool = false
 
+const PRESS_SCALE: float = 0.96
+
+var _state_tween: Tween = null
+var _squash_tween: Tween = null
+var _fading_style: StyleBoxFlat = null
+var _style_bg_targets: Dictionary = {}
+
 # Cached StyleBoxFlat instances (allocated once, mutated per state)
 var _cached_style_normal: StyleBoxFlat
 var _cached_style_hover: StyleBoxFlat
@@ -159,6 +166,10 @@ func _ready():
 		button_down.connect(_on_button_down)
 	if not button_up.is_connected(_on_button_up):
 		button_up.connect(_on_button_up)
+	if not mouse_entered.is_connected(_on_state_mouse_entered):
+		mouse_entered.connect(_on_state_mouse_entered)
+	if not mouse_exited.is_connected(_on_state_mouse_exited):
+		mouse_exited.connect(_on_state_mouse_exited)
 	
 	# Setup tooltip
 	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
@@ -169,12 +180,81 @@ func _exit_tree():
 func _on_button_down():
 	_is_pressing = true
 	_update_colors()
+	_fade_state_layer(_cached_style_hover if is_hovered() else _cached_style_normal, _cached_style_pressed)
+	_animate_press(true)
 	queue_redraw()
 
 func _on_button_up():
 	_is_pressing = false
 	_update_colors()
+	_fade_state_layer(_cached_style_pressed, _cached_style_hover if is_hovered() else _cached_style_normal)
+	_animate_press(false)
 	queue_redraw()
+
+func _on_state_mouse_entered():
+	if disabled:
+		return
+	_fade_state_layer(_cached_style_normal, _cached_style_hover)
+
+func _on_state_mouse_exited():
+	if disabled:
+		return
+	_fade_state_layer(_cached_style_hover, _cached_style_normal)
+
+func _fade_state_layer(from_style: StyleBoxFlat, to_style: StyleBoxFlat) -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	if not from_style or not to_style or not _style_bg_targets.has(to_style):
+		return
+	var from_color: Color = from_style.bg_color
+	var to_color: Color = _style_bg_targets[to_style]
+	# Color.TRANSPARENT is (1,1,1,0): lerping it toward a dark target flashes
+	# semi-opaque white mid-fade. When either end is transparent, keep the
+	# opaque end's rgb and only ramp the alpha.
+	if from_color.a < 0.01 and to_color.a > 0.01:
+		from_color = Color(to_color.r, to_color.g, to_color.b, 0.0)
+	elif to_color.a < 0.01 and from_color.a > 0.01:
+		to_color = Color(from_color.r, from_color.g, from_color.b, 0.0)
+	if from_color.is_equal_approx(to_color):
+		to_style.bg_color = to_color
+		return
+	if _state_tween and _state_tween.is_valid():
+		_state_tween.kill()
+	_fading_style = to_style
+	to_style.bg_color = from_color
+	_state_tween = create_tween()
+	_state_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	_state_tween.set_ease(M3Motion.EASE_FADE)
+	_state_tween.tween_method(
+		func(t: float):
+			if is_instance_valid(to_style):
+				to_style.bg_color = from_color.lerp(to_color, t),
+		0.0, 1.0, M3Motion.STATE
+	)
+	_state_tween.finished.connect(_on_state_fade_finished.bind(to_style))
+
+func _on_state_fade_finished(style: StyleBoxFlat) -> void:
+	if _fading_style == style:
+		_fading_style = null
+	# Snap to the current target: the fade was started against a captured color
+	# that a variant/theme change may have replaced mid-flight.
+	if _style_bg_targets.has(style):
+		style.bg_color = _style_bg_targets[style]
+
+func _animate_press(pressed_down: bool) -> void:
+	if Engine.is_editor_hint() or not is_inside_tree() or disabled:
+		return
+	if _squash_tween and _squash_tween.is_valid():
+		_squash_tween.kill()
+	_squash_tween = create_tween()
+	if pressed_down:
+		_squash_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+		_squash_tween.set_ease(M3Motion.EASE_FADE)
+	else:
+		_squash_tween.set_trans(M3Motion.EASE_POP_TRANS)
+		_squash_tween.set_ease(M3Motion.EASE_POP)
+	var target_scale: float = PRESS_SCALE if pressed_down else 1.0
+	_squash_tween.tween_property(self, "scale", Vector2.ONE * target_scale, M3Motion.STATE)
 
 func set_menu_active(active: bool):
 	_menu_active = active
@@ -358,6 +438,11 @@ func _compute_variant_colors(selected: bool) -> Dictionary:
 func _update_theme():
 	if not _cached_style_normal:
 		return
+	# Snap everything to fresh targets; a fade mid-flight toward old colors
+	# (e.g. variant switched by selection) must not leave stale colors behind.
+	if _state_tween and _state_tween.is_valid():
+		_state_tween.kill()
+	_fading_style = null
 	var spec = _get_size_spec()
 	var radius = _get_radius()
 	var pad_h = M3Units.dp(spec["padding_h"])
@@ -418,8 +503,8 @@ func _update_theme():
 	# Disabled state
 	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, icon_gap, has_icon, border_w, border_c)
 	
-	# Focus state
-	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, icon_gap, has_icon, 3, focus_border)
+	# Focus state (bg only — the ring is drawn globally by FocusSubManager)
+	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, icon_gap, has_icon, 0, focus_border)
 	
 	# Hover pressed state (checked hover for toggles)
 	if button_type == Type.TOGGLE:
@@ -428,6 +513,10 @@ func _update_theme():
 		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, icon_gap, has_icon, sel_border_w, sel_border_c, shadow_size, shadow_off, shadow_col)
 		# Override pressed with selected colors for toggle mode
 		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, icon_gap, has_icon, sel_border_w, sel_border_c, 0, shadow_off, shadow_col)
+	else:
+		# Non-toggle buttons still draw hover_pressed while clicked with the
+		# mouse; without colors it renders as the default light-gray fill.
+		_configure_stylebox(_cached_style_hover_pressed, pressed_bg, radius, pad_h, icon_gap, has_icon, border_w, border_c, 0, shadow_off, shadow_col)
 	
 	# Text colors - for toggles, compute the *visual target* color so text and icon
 	# flip immediately on press (before button_pressed changes on release).
@@ -465,8 +554,10 @@ func _update_theme():
 func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, icon_gap: int = -1, has_icon: bool = false, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
 		return
-	
-	style.bg_color = bg
+
+	_style_bg_targets[style] = bg
+	if style != _fading_style:
+		style.bg_color = bg
 	if _custom_corner_radii.is_empty():
 		style.set_corner_radius_all(radius)
 	else:
@@ -498,6 +589,18 @@ func _get_radius(spec: Dictionary = _get_size_spec()) -> int:
 	if button_shape == Shape.PILL:
 		return int(M3Units.dp(spec["height"]) / 2.0)
 	return M3Units.dp(spec["radius"])
+
+## FocusSubManager geometry protocol: report where the global focus ring
+## should be drawn for this button.
+func m3_get_focus_geometry() -> Dictionary:
+	var radius := float(_get_radius())
+	if not _custom_corner_radii.is_empty():
+		radius = float(_custom_corner_radii.max())
+	return {
+		"rect": get_global_rect(),
+		"radius": radius,
+		"color": _get_variant_colors(false).get("focus_border", M3Theme.get_primary()),
+	}
 
 func _get_text_alignment() -> HorizontalAlignment:
 	if _icon_node and _icon_node.visible:
@@ -565,6 +668,7 @@ func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {
 func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
 		_update_icon_position()
+		pivot_offset = size / 2.0
 
 func _update_icon_position():
 	if not _icon_node or not _icon_node.visible:

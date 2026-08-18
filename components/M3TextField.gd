@@ -154,6 +154,11 @@ var _cached_fonts: Dictionary = {}
 var _font_icon_template: FontIconSettings = null
 var _stored_placeholder: String = ""
 
+var _label_float_t: float = 0.0
+var _label_tween: Tween = null
+var _focus_t: float = 0.0
+var _focus_tween: Tween = null
+
 # ============================================
 # LIFECYCLE
 # ============================================
@@ -168,6 +173,7 @@ func _ready():
 	_cached_fonts = M3Theme.load_fonts()
 	_initialize_styleboxes()
 	_create_visual_children()
+	_label_float_t = 1.0 if _should_float_label() else 0.0
 	_update_icons()
 	_update_prefix_suffix()
 	_update_floating_label()
@@ -303,6 +309,7 @@ func _on_mouse_exited():
 func _on_focus_entered():
 	_is_focused = true
 	field_focus_entered.emit()
+	_animate_focus()
 	_update_theme()
 	_update_floating_label()
 	_update_layout()
@@ -311,13 +318,56 @@ func _on_focus_entered():
 func _on_focus_exited():
 	_is_focused = false
 	field_focus_exited.emit()
+	_animate_focus()
 	_update_theme()
 	_update_floating_label()
 	_update_layout()
 	queue_redraw()
 
+func _animate_focus() -> void:
+	var target: float = 1.0 if (_is_focused or _menu_active) else 0.0
+	if Engine.is_editor_hint() or not is_inside_tree():
+		_focus_t = target
+		return
+	if is_equal_approx(_focus_t, target):
+		return
+	if _focus_tween and _focus_tween.is_valid():
+		_focus_tween.kill()
+	var start: float = _focus_t
+	_focus_tween = create_tween()
+	_focus_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	_focus_tween.set_ease(M3Motion.EASE_FADE)
+	_focus_tween.tween_method(
+		func(t: float):
+			_focus_t = lerpf(start, target, t)
+			queue_redraw(),
+		0.0, 1.0, M3Motion.STATE
+	)
+
+func _animate_label_float() -> void:
+	var target: float = 1.0 if _should_float_label() else 0.0
+	if is_equal_approx(_label_float_t, target):
+		return
+	if Engine.is_editor_hint() or not is_inside_tree() or not _ready_called:
+		_label_float_t = target
+		return
+	if _label_tween and _label_tween.is_valid():
+		_label_tween.kill()
+	var start: float = _label_float_t
+	_label_tween = create_tween()
+	_label_tween.set_trans(M3Motion.EASE_ENTER_TRANS)
+	_label_tween.set_ease(M3Motion.EASE_ENTER)
+	_label_tween.tween_method(
+		func(t: float):
+			_label_float_t = lerpf(start, target, t)
+			_update_layout()
+			queue_redraw(),
+		0.0, 1.0, M3Motion.STATE
+	)
+
 func set_menu_active(active: bool):
 	_menu_active = active
+	_animate_focus()
 	_update_theme()
 	_update_floating_label()
 	_update_layout()
@@ -356,9 +406,16 @@ func _draw():
 	if has_error:
 		border_color = M3Theme.get_error()
 		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
-	elif _is_focused or _menu_active:
-		border_color = _get_accent()
-		border_width = M3Units.dp(BORDER_WIDTH_FOCUSED)
+	elif _focus_t > 0.001:
+		var base_color: Color
+		if not editable:
+			base_color = M3Theme.disabled_color(M3Theme.get_outline())
+		elif _hovered:
+			base_color = M3Theme.get_on_surface()
+		else:
+			base_color = M3Theme.get_outline()
+		border_color = base_color.lerp(_get_accent(), _focus_t)
+		border_width = lerpf(M3Units.dp(BORDER_WIDTH), M3Units.dp(BORDER_WIDTH_FOCUSED), _focus_t)
 	elif not editable:
 		border_color = M3Theme.disabled_color(M3Theme.get_outline())
 		border_width = M3Units.dp(BORDER_WIDTH)
@@ -391,7 +448,7 @@ func _draw_outlined(rect: Rect2, border_color: Color, border_width: float):
 	_cached_border_sb.set_corner_radius_all(M3Units.dpi(RADIUS))
 	_cached_border_sb.draw(get_canvas_item(), rect)
 	
-	if _should_float_label() and not label_text.is_empty():
+	if _label_float_t > 0.01 and not label_text.is_empty():
 		var label_rect = _floating_label.get_rect()
 		if label_rect.size.x > 0:
 			var patch_padding = M3Units.dp(4.0)
@@ -588,6 +645,12 @@ func _update_layout():
 	
 	# Determine if label should float
 	var should_float = _should_float_label() and not label_text.is_empty()
+	# Self-correct the float state outside of animations: programmatic text
+	# changes (e.g. M3OptionButton setting selected text) don't emit
+	# text_changed, so _animate_label_float may never run and the label would
+	# sit at resting position over the field text.
+	if not (_label_tween and _label_tween.is_running()):
+		_label_float_t = 1.0 if should_float else 0.0
 	
 	# Native LineEdit text padding (content margins on stylebox)
 	# Text area is confined to container_height; supporting text drawn below by _supporting_label
@@ -619,20 +682,14 @@ func _update_layout():
 	
 	# Floating label
 	if _floating_label and not label_text.is_empty():
-		if should_float:
-			var label_font_size = M3Units.dp(FLOATING_LABEL_FONT_SIZE)
-			_floating_label.add_theme_font_size_override("font_size", label_font_size)
-			_floating_label.size = Vector2(_floating_label.get_minimum_size().x, label_font_size * 1.2)
-			
-			if field_variant == Variant.FILLED:
-				_floating_label.position = Vector2(current_x, M3Units.dp(4.0))
-			else:
-				_floating_label.position = Vector2(current_x, -M3Units.dp(6.0))
-		else:
-			var label_font_size = M3Units.dp(INPUT_FONT_SIZE)
-			_floating_label.add_theme_font_size_override("font_size", label_font_size)
-			_floating_label.size = Vector2(_floating_label.get_minimum_size().x, container_height)
-			_floating_label.position = Vector2(current_x, 0)
+		var float_size: float = M3Units.dp(FLOATING_LABEL_FONT_SIZE)
+		var rest_size: float = M3Units.dp(INPUT_FONT_SIZE)
+		var float_y: float = M3Units.dp(4.0) if field_variant == Variant.FILLED else -M3Units.dp(6.0)
+		var t: float = _label_float_t
+		var label_font_size: int = maxi(1, int(round(lerpf(rest_size, float_size, t))))
+		_floating_label.add_theme_font_size_override("font_size", label_font_size)
+		_floating_label.size = Vector2(_floating_label.get_minimum_size().x, lerpf(container_height, float_size * 1.2, t))
+		_floating_label.position = Vector2(current_x, lerpf(0.0, float_y, t))
 	
 	# Supporting text
 	if _supporting_label:
@@ -668,13 +725,15 @@ func _update_floating_label():
 		placeholder_text = _stored_placeholder
 		_stored_placeholder = ""
 	
+	_animate_label_float()
 	if _ready_called:
 		_update_layout()
 
 func _update_supporting_text():
 	if not _supporting_label:
 		return
-	
+
+	var was_visible: bool = _supporting_label.visible
 	if not error_text.is_empty():
 		_supporting_label.text = error_text
 		_supporting_label.visible = true
@@ -683,9 +742,20 @@ func _update_supporting_text():
 		_supporting_label.visible = true
 	else:
 		_supporting_label.visible = false
-	
+
 	if _ready_called:
 		_update_theme()
+	if _supporting_label.visible and not was_visible:
+		_animate_supporting_in()
+
+func _animate_supporting_in() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	_supporting_label.modulate.a = 0.0
+	var support_tween := create_tween()
+	support_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	support_tween.set_ease(M3Motion.EASE_FADE)
+	support_tween.tween_property(_supporting_label, "modulate:a", 1.0, M3Motion.STATE)
 
 func _update_icons():
 	if not _leading_icon_node or not _trailing_icon_node:

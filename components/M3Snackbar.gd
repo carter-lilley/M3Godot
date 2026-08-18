@@ -53,6 +53,9 @@ var _progress_visible: bool = false
 var _stack_offset_index: int = 0
 var _hover_pauses_timer: bool = true
 
+var _anim_tween: Tween = null
+var _dismissing: bool = false
+
 const STACK_GAP := 8.0
 
 # ============================================
@@ -286,6 +289,26 @@ func resume_timer():
 func _on_timer_timeout():
 	dismiss()
 
+func show_overlay():
+	_dismissing = false
+	super.show_overlay()
+	_animate_in()
+
+func _animate_in() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	var final_y: float = _container.position.y
+	_container.position.y = final_y + M3Units.dp(24)
+	_container.modulate.a = 0.0
+	if _anim_tween and _anim_tween.is_valid():
+		_anim_tween.kill()
+	_anim_tween = create_tween()
+	_anim_tween.set_parallel(true)
+	_anim_tween.set_trans(M3Motion.EASE_ENTER_TRANS)
+	_anim_tween.set_ease(M3Motion.EASE_ENTER)
+	_anim_tween.tween_property(_container, "position:y", final_y, M3Motion.OVERLAY)
+	_anim_tween.tween_property(_container, "modulate:a", 1.0, M3Motion.OVERLAY)
+
 # ============================================
 # INTERACTION
 # ============================================
@@ -298,7 +321,27 @@ func _on_dismiss_pressed():
 	dismiss()
 
 func dismiss():
+	if _dismissing:
+		return
+	_dismissing = true
 	_timer.stop()
+	if Engine.is_editor_hint() or not is_inside_tree():
+		super.dismiss()
+		return
+	if _anim_tween and _anim_tween.is_valid():
+		_anim_tween.kill()
+	_anim_tween = create_tween()
+	_anim_tween.set_parallel(true)
+	_anim_tween.set_trans(M3Motion.EASE_EXIT_TRANS)
+	_anim_tween.set_ease(M3Motion.EASE_EXIT)
+	_anim_tween.tween_property(_container, "modulate:a", 0.0, M3Motion.OVERLAY)
+	_anim_tween.tween_property(_container, "position:y", _container.position.y + M3Units.dp(16), M3Motion.OVERLAY)
+	_anim_tween.set_parallel(false)
+	_anim_tween.tween_callback(_finish_dismiss)
+
+func _finish_dismiss() -> void:
+	if not _dismissing:
+		return
 	super.dismiss()
 
 # ============================================

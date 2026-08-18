@@ -171,6 +171,7 @@ func _show_menu():
 	# Update arrow icon
 	trailing_icon = DROPDOWN_ICON_OPEN
 	_update_icons()
+	_flip_trailing_icon()
 	_update_layout()
 	queue_redraw()
 	
@@ -241,6 +242,7 @@ func _close_menu():
 	# Restore arrow icon
 	trailing_icon = DROPDOWN_ICON
 	_update_icons()
+	_flip_trailing_icon()
 	_update_layout()
 	queue_redraw()
 
@@ -283,8 +285,23 @@ func _on_menu_dismissed():
 	
 	trailing_icon = DROPDOWN_ICON
 	_update_icons()
+	_flip_trailing_icon()
 	_update_layout()
 	queue_redraw()
+
+var _icon_tween: Tween = null
+
+func _flip_trailing_icon() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree() or not _trailing_icon_node:
+		return
+	_trailing_icon_node.pivot_offset = _trailing_icon_node.size / 2.0
+	_trailing_icon_node.rotation = -PI / 2.0
+	if _icon_tween and _icon_tween.is_valid():
+		_icon_tween.kill()
+	_icon_tween = create_tween()
+	_icon_tween.set_trans(M3Motion.EASE_POP_TRANS)
+	_icon_tween.set_ease(M3Motion.EASE_POP)
+	_icon_tween.tween_property(_trailing_icon_node, "rotation", 0.0, M3Motion.OVERLAY)
 
 func _on_filter_text_changed(new_text: String):
 	if not _is_menu_open:

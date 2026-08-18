@@ -44,6 +44,9 @@ const TOUCH_TARGET := 40.0
 var _hovered: bool = false
 var _pressed: bool = false
 
+var _check_t: float = 0.0
+var _check_tween: Tween = null
+
 # Cached StyleBoxFlats (allocated once, mutated per draw)
 var _cached_box_sb: StyleBoxFlat
 var _cached_overlay_sb: StyleBoxFlat
@@ -86,12 +89,32 @@ func _ready():
 	# Connect signals
 	button_down.connect(func(): _pressed = true; queue_redraw())
 	button_up.connect(func(): _pressed = false; queue_redraw())
-	toggled.connect(func(_v): queue_redraw())
+	toggled.connect(_on_toggled)
 	mouse_entered.connect(func(): _hovered = true; queue_redraw())
 	mouse_exited.connect(func(): _hovered = false; queue_redraw())
-	
+
 	_initialize_styleboxes()
+	_check_t = 1.0 if button_pressed else 0.0
 	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
+
+func _on_toggled(_v: bool) -> void:
+	var target: float = 1.0 if button_pressed else 0.0
+	if Engine.is_editor_hint() or not is_inside_tree():
+		_check_t = target
+		queue_redraw()
+		return
+	if _check_tween and _check_tween.is_valid():
+		_check_tween.kill()
+	var start: float = _check_t
+	_check_tween = create_tween()
+	_check_tween.set_trans(M3Motion.EASE_POP_TRANS)
+	_check_tween.set_ease(M3Motion.EASE_POP)
+	_check_tween.tween_method(
+		func(t: float):
+			_check_t = lerpf(start, target, t)
+			queue_redraw(),
+		0.0, 1.0, M3Motion.STATE
+	)
 
 func _exit_tree():
 	M3Tooltip.unbind(self)
@@ -138,7 +161,7 @@ func _draw():
 	_draw_box(box_rect, is_checked, is_disabled)
 	
 	# Draw checkmark or indeterminate line
-	if is_checked:
+	if is_checked or _check_t > 0.01:
 		if indeterminate:
 			_draw_indeterminate(box_rect, is_disabled)
 		else:
@@ -172,11 +195,12 @@ func _draw_checkmark(rect: Rect2, is_disabled: bool):
 	if is_disabled:
 		check_color.a *= 0.38
 	var stroke = M3Units.dp(CHECK_STROKE)
-	
-	# Checkmark points within the box
-	var p1 = rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.55)
-	var p2 = rect.position + Vector2(rect.size.x * 0.42, rect.size.y * 0.72)
-	var p3 = rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.28)
+
+	# Checkmark points within the box, scale-popped around center by _check_t
+	var center := rect.get_center()
+	var p1 := center + (rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.55) - center) * _check_t
+	var p2 := center + (rect.position + Vector2(rect.size.x * 0.42, rect.size.y * 0.72) - center) * _check_t
+	var p3 := center + (rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.28) - center) * _check_t
 	
 	draw_line(p1, p2, check_color, stroke, true)
 	draw_line(p2, p3, check_color, stroke, true)
@@ -189,9 +213,10 @@ func _draw_indeterminate(rect: Rect2, is_disabled: bool):
 	if is_disabled:
 		line_color.a *= 0.38
 	var stroke = M3Units.dp(CHECK_STROKE)
-	
-	var start = rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.5)
-	var end = rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.5)
+
+	var center := rect.get_center()
+	var start := center + (rect.position + Vector2(rect.size.x * 0.22, rect.size.y * 0.5) - center) * _check_t
+	var end := center + (rect.position + Vector2(rect.size.x * 0.78, rect.size.y * 0.5) - center) * _check_t
 	
 	draw_line(start, end, line_color, stroke, true)
 

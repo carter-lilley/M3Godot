@@ -56,6 +56,7 @@ signal dismissed
 # ============================================
 
 var _bg_panel: Panel
+var _popup_tween: Tween = null
 var _scroll: ScrollContainer
 var _vbox: VBoxContainer
 var _item_nodes: Array[Control] = []
@@ -143,6 +144,7 @@ func _update_appearance():
 func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = ColorVariant.STANDARD, alignment: MenuAlignment = MenuAlignment.START, auto_focus_first: bool = true, min_width: float = 0.0, multi_select: bool = false, radio_group: bool = false, submenu_mode: bool = false, silent_focus_first: bool = true):
 	_ensure_visuals()
 	_cached_fonts = M3Theme.load_fonts()
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	_menu_items = items.duplicate()
 	_color_variant = variant
@@ -160,11 +162,13 @@ func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = Co
 	_calculate_size_and_position()
 	
 	visible = true
-	
+
 	# Reset scroll to top
 	if _scroll:
 		_scroll.scroll_vertical = 0
-	
+
+	_animate_popup()
+
 	# Focus the first Button (for keyboard navigation; disable for dropdowns).
 	# Defer so the renderer and its items have finished their first layout pass
 	# before we grab focus, otherwise focus_entered may not fire and the custom
@@ -180,6 +184,26 @@ func _focus_first_item(silent: bool) -> void:
 				UIManager.suppress_next_focus_sound()
 			node.grab_focus()
 			break
+
+func _animate_popup() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	if _popup_tween and _popup_tween.is_valid():
+		_popup_tween.kill()
+	var pivot_x: float = size.x if _horizontal_alignment == MenuAlignment.END else 0.0
+	pivot_offset = Vector2(pivot_x, 0.0)
+	scale = Vector2.ONE * 0.85
+	modulate.a = 0.0
+	_popup_tween = create_tween()
+	_popup_tween.set_parallel(true)
+	_popup_tween.set_trans(M3Motion.EASE_ENTER_TRANS)
+	_popup_tween.set_ease(M3Motion.EASE_ENTER)
+	_popup_tween.tween_property(self, "scale", Vector2.ONE, M3Motion.OVERLAY)
+	_popup_tween.tween_property(self, "modulate:a", 1.0, M3Motion.OVERLAY)
+	for i in range(_item_nodes.size()):
+		var node := _item_nodes[i]
+		node.modulate.a = 0.0
+		_popup_tween.tween_property(node, "modulate:a", 1.0, M3Motion.OVERLAY * 0.6).set_delay(M3Motion.ITEM_STAGGER * i)
 
 func dismiss():
 	visible = false
@@ -747,7 +771,11 @@ func _input(event: InputEvent):
 	elif event is InputEventScreenDrag:
 		_touch_active = true
 	
-	# Outside-click dismissal only; ui_cancel is handled by M3Overlay base class
+	# Outside-click dismissal only; ui_cancel is handled by M3Overlay base class.
+	# Skipped while the open animation plays: the renderer's rect is mid-scale,
+	# so a cosmetic transform must not shrink the hit area and mis-dismiss.
+	if _popup_tween and _popup_tween.is_running():
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if not get_global_rect().has_point(event.global_position):
 			# Don't dismiss if the click is inside an open submenu or the scroll container

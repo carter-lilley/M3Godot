@@ -169,8 +169,10 @@ func _update_icon_position():
 func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, icon_gap: int = -1, has_icon: bool = false, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
 		return
-	
-	style.bg_color = bg
+
+	_style_bg_targets[style] = bg
+	if style != _fading_style:
+		style.bg_color = bg
 	if _custom_corner_radii.is_empty():
 		style.set_corner_radius_all(radius)
 	else:
@@ -195,6 +197,12 @@ func _get_radius(_spec: Dictionary = {}) -> int:
 		# Circular uses half the height as radius (creates pill shape when wide/narrow)
 		return int(M3Units.dp(spec["height"]) / 2.0)
 	return M3Units.dp(spec["radius"])
+
+## FocusSubManager geometry protocol: icon variants carry their own colors.
+func m3_get_focus_geometry() -> Dictionary:
+	var geo := super()
+	geo["color"] = _get_icon_variant_colors(false).get("focus_border", M3Theme.get_primary())
+	return geo
 
 # ============================================
 # OVERRIDE COLOR UPDATE (uses icon variant colors)
@@ -247,7 +255,11 @@ func _update_colors():
 func _update_theme():
 	if not _cached_style_normal:
 		return
-	
+
+	if _state_tween and _state_tween.is_valid():
+		_state_tween.kill()
+	_fading_style = null
+
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	var radius = _get_radius()
 	var pad_h := 0  # No extra padding for icon buttons
@@ -305,8 +317,8 @@ func _update_theme():
 	# Disabled state
 	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, -1, false, border_w, border_c)
 	
-	# Focus state
-	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, -1, false, 3, focus_border)
+	# Focus state (bg only — the ring is drawn globally by FocusSubManager)
+	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, -1, false, 0, focus_border)
 	
 	# Hover pressed state (checked hover for toggles)
 	if button_type == Type.TOGGLE:
@@ -314,6 +326,10 @@ func _update_theme():
 		var sel_border_c = selected_colors.border_c
 		_configure_stylebox(_cached_style_hover_pressed, sel_hover_bg, radius, pad_h, -1, false, sel_border_w, sel_border_c)
 		_configure_stylebox(_cached_style_pressed, sel_bg, radius, pad_h, -1, false, sel_border_w, sel_border_c)
+	else:
+		# Non-toggle buttons still draw hover_pressed while clicked with the
+		# mouse; without colors it renders as the default light-gray fill.
+		_configure_stylebox(_cached_style_hover_pressed, pressed_bg, radius, pad_h, -1, false, border_w, border_c)
 	
 	# Text colors (for icon color sync)
 	var current_text: Color

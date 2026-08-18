@@ -235,8 +235,10 @@ var _media_bounds: Rect2 = Rect2()
 var _text_bounds: Rect2 = Rect2()
 
 var _media_canvas_item: RID = RID()
+# Unclipped overlay carrier: no longer draws a focus ring itself (the ring is
+# global, owned by FocusSubManager) but remains as the transform/draw-index
+# parent for focus overlays such as game_card's focus effect stack.
 var _focus_ring_canvas_item: RID = RID()
-var _focus_ring_style: StyleBoxFlat
 var _rounded_media_material: ShaderMaterial
 var _text_canvas_item: RID = RID()
 
@@ -273,38 +275,40 @@ var _last_media_pos_y: float = -1.0
 
 func _update_focus_ring_bounds() -> void:
 	_focus_ring_bounds_queued = false
-	if not _focus_ring_canvas_item.is_valid():
-		return
-	# Skip expensive draw command rebuilds while the ring is hidden and the card
-	# is not focused. It will be rebuilt on the next focus change anyway.
-	if not has_focus() and not _focus_ring_canvas_item.is_valid():
-		return
-	if not has_focus():
-		# If the ring is currently hidden, we can bail unless its geometry was
-		# never built yet (target size is zero means it hasn't been initialized).
-		if _focus_target_w > 0.0 and _focus_target_h > 0.0:
-			return
+	# The focus ring itself is drawn globally by FocusSubManager. This remains
+	# as a hook for subclasses that size focus overlays from the card's focus
+	# bounds (see game_card._update_focus_ring_bounds).
+
+## FocusSubManager geometry protocol: media bounds when backgroundless, full
+## card otherwise, in canvas coordinates and including the focus-pop
+## content_scale. Prefers the grid-stamped slot offset over measured globals
+## (same truth as sync_visual_transform_with_offset).
+func m3_get_focus_geometry() -> Dictionary:
 	var target_w := _focus_target_w
 	var target_h := _focus_target_h
 	if target_w <= 0.0:
 		target_w = size.x
 	if target_h <= 0.0:
 		target_h = size.y
-	var ring_rect: Rect2
+	var local_rect: Rect2
 	if not show_background:
 		var media_w := _media_bounds.size.x if _media_bounds.size.x > 0.0 else target_w
 		var media_h := _media_bounds.size.y if _media_bounds.size.y > 0.0 else target_h
-		ring_rect = Rect2(_media_bounds.position, Vector2(media_w, media_h))
+		local_rect = Rect2(_media_bounds.position, Vector2(media_w, media_h))
 	else:
-		ring_rect = Rect2(Vector2.ZERO, size)
-	_update_focus_ring_radius(target_w, target_h)
-	RenderingServer.canvas_item_clear(_focus_ring_canvas_item)
-	_focus_ring_style.draw(_focus_ring_canvas_item, ring_rect)
-
-func _update_focus_ring_radius(target_w: float, target_h: float) -> void:
-	var max_radius: float = min(target_w, target_h) / 2.0
-	var radius: float = card_rounding_ratio * max_radius
-	_focus_ring_style.set_corner_radius_all(int(round(radius)))
+		local_rect = Rect2(Vector2.ZERO, size)
+	var radius := card_rounding_ratio * minf(target_w, target_h) * 0.5
+	var origin: Vector2
+	if _visual_layer and _visual_layer.is_inside_tree() and _has_grid_offset:
+		origin = _visual_layer.global_position + _last_grid_offset
+	else:
+		origin = global_position
+	var xform := Transform2D().translated(origin)
+	if not content_scale.is_equal_approx(Vector2.ONE):
+		var pivot := size * 0.5
+		xform = xform * Transform2D().translated(pivot) * Transform2D().scaled(content_scale) * Transform2D().translated(-pivot)
+		radius *= content_scale.x
+	return { "rect": xform * local_rect, "radius": radius }
 
 ## When true, the card renders as a dimmed blank placeholder (background shape
 ## plus an empty media panel) and is non-interactive. Used by the grid to fill
@@ -331,7 +335,10 @@ func set_placeholder(value: bool) -> void:
 	if _text_canvas_item.is_valid():
 		RenderingServer.canvas_item_set_modulate(_text_canvas_item, Color.WHITE)
 	if value and _focus_ring_canvas_item.is_valid():
+		# Placeholders are non-interactive; hide any focus overlays riding the carrier.
 		RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, false)
+	elif _focus_ring_canvas_item.is_valid():
+		RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, true)
 	_update_media()
 	_update_visual_items_visibility()
 
@@ -439,9 +446,13 @@ func sync_visual_transform_with_offset(base_offset: Vector2) -> void:
 		RenderingServer.canvas_item_set_transform(_text_canvas_item, base_transform)
 
 	if _focus_ring_canvas_item.is_valid():
-		# The focus ring stylebox is drawn at ring_rect in local space, so its
-		# canvas item only needs the base card transform (position + scale).
+		# The overlay carrier shares the card's base transform (position + scale).
 		RenderingServer.canvas_item_set_transform(_focus_ring_canvas_item, base_transform)
+
+	# Grid-stamped movement doesn't change the card's local rect, so the global
+	# focus ring never sees it via item_rect_changed; push the new geometry.
+	if has_focus():
+		FocusSubManager.notify_geometry_changed(self)
 
 func _mark_visuals_position_synced() -> void:
 	if _visuals_position_synced:
@@ -544,10 +555,9 @@ func _update_visual_items_visibility() -> void:
 			text_visible = text_visible and _visuals_position_synced
 		RenderingServer.canvas_item_set_visible(_text_canvas_item, text_visible)
 	if _focus_ring_canvas_item.is_valid():
-		var ring_visible := base_visible and has_focus() and not disabled
-		if using_layer:
-			ring_visible = ring_visible and _visuals_position_synced
-		RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, ring_visible)
+		# Overlay carrier stays visible while the card is; focus effects gate
+		# themselves. Hidden only for placeholders (set_placeholder).
+		RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, base_visible and not _is_placeholder)
 
 func _create_visual_layer_rs_items(parent_rid: RID = RID()) -> void:
 	"""Create the RS items used only when a visual layer is active."""
@@ -577,7 +587,8 @@ func _setup_rs_items() -> void:
 	_focus_ring_canvas_item = RenderingServer.canvas_item_create()
 	RenderingServer.canvas_item_set_parent(_focus_ring_canvas_item, parent_rid)
 	RenderingServer.canvas_item_set_draw_index(_focus_ring_canvas_item, 3)
-	RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, false)
+	# Carrier for focus overlays; always visible (placeholders hide it).
+	RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, true)
 	
 	# Visual-layer background and text are only used when a visual layer is active.
 	# This avoids creating RS items for cards that never use the overflow layer,
@@ -635,14 +646,7 @@ func _initialize_styleboxes():
 	_cached_stylebox.anti_aliasing = true
 	_cached_stylebox.anti_aliasing_size = 1.0
 	_cached_stylebox.set_border_width_all(0)
-	
-	_focus_ring_style = StyleBoxFlat.new()
-	_focus_ring_style.bg_color = Color.TRANSPARENT
-	_focus_ring_style.border_color = M3Theme.get_primary()
-	_focus_ring_style.set_border_width_all(M3Units.dp(2))
-	_focus_ring_style.anti_aliasing = true
-	_focus_ring_style.anti_aliasing_size = 1.0
-	
+
 	_rounded_media_material = ShaderMaterial.new()
 	_rounded_media_material.shader = RoundedMediaShader
 
@@ -809,10 +813,8 @@ func _configure_stylebox_for_state():
 	
 	if disabled:
 		bg = M3Theme.disabled_color(bg)
-	elif _is_pressing:
-		bg = M3Theme.state_overlay(bg, M3Theme.get_on_surface(), M3Theme.OPACITY_PRESSED)
-	elif _hovered:
-		bg = M3Theme.state_overlay(bg, M3Theme.get_on_surface(), M3Theme.OPACITY_HOVER)
+	elif _state_opacity > 0.001:
+		bg = M3Theme.state_overlay(bg, M3Theme.get_on_surface(), _state_opacity)
 	
 	_cached_stylebox.bg_color = bg
 	_cached_stylebox.set_border_width_all(outline_w)
@@ -1147,12 +1149,37 @@ func set_media_content(content: Control):
 func refresh_theme():
 	_cached_fonts = M3Theme.load_fonts()
 	_update_text()
-	if _focus_ring_style:
-		_focus_ring_style.border_color = M3Theme.get_primary()
 	queue_redraw()
 
 var _hovered: bool = false
 var _is_pressing: bool = false
+
+var _state_opacity: float = 0.0
+var _state_tween: Tween = null
+
+func _animate_state_layer() -> void:
+	var target: float = 0.0
+	if _is_pressing:
+		target = M3Theme.OPACITY_PRESSED
+	elif _hovered:
+		target = M3Theme.OPACITY_HOVER
+	if Engine.is_editor_hint() or not is_inside_tree():
+		_state_opacity = target
+		return
+	if is_equal_approx(_state_opacity, target):
+		return
+	if _state_tween and _state_tween.is_valid():
+		_state_tween.kill()
+	var start: float = _state_opacity
+	_state_tween = create_tween()
+	_state_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	_state_tween.set_ease(M3Motion.EASE_FADE)
+	_state_tween.tween_method(
+		func(t: float):
+			_state_opacity = lerpf(start, target, t)
+			queue_redraw(),
+		0.0, 1.0, M3Motion.STATE
+	)
 
 func _notification(what: int):
 	match what:
@@ -1166,11 +1193,13 @@ func _notification(what: int):
 		NOTIFICATION_MOUSE_ENTER:
 			if clickable:
 				_hovered = true
+				_animate_state_layer()
 				queue_redraw()
 		NOTIFICATION_MOUSE_EXIT:
 			if clickable:
 				_hovered = false
 				_is_pressing = false
+				_animate_state_layer()
 				queue_redraw()
 		NOTIFICATION_VISIBILITY_CHANGED:
 			_update_visual_items_visibility()
@@ -1187,6 +1216,7 @@ func _gui_input(event: InputEvent):
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			_is_pressing = event.pressed
+			_animate_state_layer()
 			queue_redraw()
 			var vp = get_viewport()
 			if vp is SubViewport:
@@ -1399,12 +1429,5 @@ func _update_text_content_sizes() -> void:
 			_text_content.custom_minimum_size.y = min_text_h
 
 func _on_focus_changed():
-	if _focus_ring_canvas_item.is_valid():
-		var should_show := has_focus() and not disabled
-		if _uses_visual_layer():
-			should_show = should_show and _visuals_position_synced
-		RenderingServer.canvas_item_set_visible(_focus_ring_canvas_item, should_show)
-		if should_show:
-			_update_focus_ring_bounds()
 	_apply_visual_draw_index()
 	queue_redraw()

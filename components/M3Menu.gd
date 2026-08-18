@@ -30,6 +30,8 @@ var _summoner: Control = null
 var _submenu: M3Menu = null
 var _submenu_item_index: int = -1
 var _summoner_start_pos: Vector2 = Vector2.ZERO
+var _dismissing: bool = false
+var _dismiss_tween: Tween = null
 var _movement_timer: Timer = null
 var _parent_menu: M3Menu = null
 var _item_selected: bool = false
@@ -90,7 +92,10 @@ func _check_summoner_moved() -> void:
 	if _summoner == null or not is_instance_valid(_summoner):
 		dismiss()
 		return
-	if _summoner.global_position.distance_to(_summoner_start_pos) > 1.0:
+	# Compare rect centers, not origin: press-squash animations scale the
+	# summoner around its center pivot, which shifts the transform origin
+	# without actually moving the control.
+	if _summoner.get_global_rect().get_center().distance_to(_summoner_start_pos) > 1.0:
 		dismiss()
 
 # ============================================
@@ -152,13 +157,23 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 	# Release previous summoner
 	_release_summoner()
 	_summoner = anchor
-	_summoner_start_pos = anchor.global_position
+	# Track the rect center, not the origin: press-squash animations scale the
+	# anchor around its center pivot, shifting the transform origin by >1px and
+	# tripping the moved-check. The center is invariant under center-pivot scale.
+	_summoner_start_pos = anchor.get_global_rect().get_center()
 	_set_summoner_active(true)
 	_start_movement_timer()
 	
 	# Reset item selection tracking for fresh popup
 	_item_selected = false
 	_parent_menu = null
+	_dismissing = false
+	# Kill any in-flight dismiss fade: a submenu can be closed and re-popped in
+	# the same frame (hover off/on the summoner item), and a stale fade would
+	# otherwise finish later and hide the reopened menu.
+	if _dismiss_tween and _dismiss_tween.is_valid():
+		_dismiss_tween.kill()
+		_dismiss_tween = null
 	
 	if as_submenu:
 		# Just add to tree and show; don't register in _active so parent isn't dismissed
@@ -217,6 +232,9 @@ func refresh_theme():
 		_renderer.refresh_theme()
 
 func dismiss():
+	if _dismissing:
+		return
+	_dismissing = true
 	_stop_movement_timer()
 	_close_submenu()
 	# Free any non-auto_free submenus so they don't leak
@@ -242,22 +260,37 @@ func dismiss():
 	if _renderer and _renderer.navigated_off_edge.is_connected(_on_navigated_off_edge):
 		_renderer.navigated_off_edge.disconnect(_on_navigated_off_edge)
 
-	# Hide the menu before returning focus so this menu's own focus pull-back
-	# (and any active overlay's pull-back) doesn't fight the summoner focus.
-	visible = false
-	dismissed.emit()
-
-	# Return focus to the summoner. For root menus (no parent menu) this happens
-	# both on cancellation and on item selection so the originating control,
-	# e.g. an M3OptionButton, regains focus. Suppress overlay pull-back while we
-	# do this to prevent infinite recursion with the underlying overlay.
+	# The dismiss fade is cosmetic only: the menu stops accepting input and
+	# returns focus immediately so the out-animation can never swallow clicks
+	# or trap focus in a closing menu. This menu's own focus pull-back is
+	# guarded by _dismissing, and global pull-back is suppressed for the grab.
+	if _renderer:
+		_renderer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	M3Overlay._suppress_focus_pullback = true
 	if _parent_menu == null and _summoner != null and is_instance_valid(_summoner):
-		if UIManager:
-			UIManager.suppress_next_focus_sound()
-		_summoner.grab_focus()
+		var focus_owner := get_viewport().gui_get_focus_owner()
+		if focus_owner == null or focus_owner == self or is_ancestor_of(focus_owner):
+			if UIManager:
+				UIManager.suppress_next_focus_sound()
+			_summoner.grab_focus()
 	M3Overlay._suppress_focus_pullback = false
 
+	if not Engine.is_editor_hint() and is_inside_tree() and _renderer and _renderer.visible:
+		if _dismiss_tween and _dismiss_tween.is_valid():
+			_dismiss_tween.kill()
+		_dismiss_tween = create_tween()
+		_dismiss_tween.set_trans(M3Motion.EASE_EXIT_TRANS)
+		_dismiss_tween.set_ease(M3Motion.EASE_EXIT)
+		_dismiss_tween.tween_property(_renderer, "modulate:a", 0.0, M3Motion.OVERLAY * 0.6)
+		_dismiss_tween.tween_callback(_finish_dismiss)
+	else:
+		_finish_dismiss()
+
+func _finish_dismiss():
+	if not _dismissing:
+		return
+	visible = false
+	dismissed.emit()
 	_release_summoner()
 
 	if auto_free:
@@ -362,6 +395,8 @@ func _on_overlay_focus_changed(control: Control) -> void:
 	# If a submenu is open, its focus is outside this menu's subtree, so the
 	# base M3Overlay pull-back would fight it. Skip pull-back while a submenu
 	# is open; the submenu handles its own focus containment.
+	if _dismissing:
+		return
 	if _submenu and _submenu.is_open():
 		return
 	super._on_overlay_focus_changed(control)

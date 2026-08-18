@@ -114,6 +114,10 @@ var _cached_fonts: Dictionary = {}
 var _font_icon_template: FontIconSettings = null
 var _cached_divider_sb: StyleBoxLine = null
 
+var _anim_tween: Tween = null
+var _dismissing: bool = false
+var _scrim_alpha: float = 0.32
+
 # Fixed-size enforcement: last computed BASIC dialog size, re-applied whenever
 # content minimum size pressure tries to grow the container past it.
 var _fixed_size_px: Vector2 = Vector2.ZERO
@@ -156,8 +160,56 @@ func show_overlay():
 func _deferred_position_and_show():
 	await get_tree().process_frame
 	_position_dialog()
+	_dismissing = false
 	super.show_overlay()
 	_focus_first_action()
+	_animate_in()
+
+func _animate_in() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	if _anim_tween and _anim_tween.is_valid():
+		_anim_tween.kill()
+	var scrim_target_a: float = _scrim_alpha
+	_scrim.color.a = 0.0
+	_dialog_container.modulate.a = 0.0
+	var animate_scale: bool = dialog_variant == Variant.BASIC
+	if animate_scale:
+		_dialog_container.pivot_offset = _dialog_container.size / 2.0
+		_dialog_container.scale = Vector2.ONE * 0.8
+	_anim_tween = create_tween()
+	_anim_tween.set_parallel(true)
+	_anim_tween.set_trans(M3Motion.EASE_ENTER_TRANS)
+	_anim_tween.set_ease(M3Motion.EASE_ENTER)
+	_anim_tween.tween_property(_dialog_container, "modulate:a", 1.0, M3Motion.OVERLAY)
+	_anim_tween.tween_property(_scrim, "color:a", scrim_target_a, M3Motion.OVERLAY)
+	if animate_scale:
+		_anim_tween.tween_property(_dialog_container, "scale", Vector2.ONE, M3Motion.OVERLAY)
+
+func dismiss():
+	if _dismissing:
+		return
+	if Engine.is_editor_hint() or not is_inside_tree():
+		super.dismiss()
+		return
+	_dismissing = true
+	if _anim_tween and _anim_tween.is_valid():
+		_anim_tween.kill()
+	_anim_tween = create_tween()
+	_anim_tween.set_parallel(true)
+	_anim_tween.set_trans(M3Motion.EASE_EXIT_TRANS)
+	_anim_tween.set_ease(M3Motion.EASE_EXIT)
+	_anim_tween.tween_property(_dialog_container, "modulate:a", 0.0, M3Motion.OVERLAY)
+	_anim_tween.tween_property(_scrim, "color:a", 0.0, M3Motion.OVERLAY)
+	if dialog_variant == Variant.BASIC:
+		_anim_tween.tween_property(_dialog_container, "scale", Vector2.ONE * 0.9, M3Motion.OVERLAY)
+	_anim_tween.set_parallel(false)
+	_anim_tween.tween_callback(_finish_dismiss)
+
+func _finish_dismiss() -> void:
+	if not _dismissing:
+		return
+	super.dismiss()
 
 # ============================================
 # LIFECYCLE
@@ -193,6 +245,7 @@ func _build_layout():
 	_scrim = ColorRect.new()
 	_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_scrim.color = Color(M3Theme.get_on_surface().r, M3Theme.get_on_surface().g, M3Theme.get_on_surface().b, 0.32)
+	_scrim_alpha = _scrim.color.a
 	_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_scrim.gui_input.connect(_on_scrim_input)
 	add_child(_scrim)

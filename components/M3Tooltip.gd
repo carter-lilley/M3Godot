@@ -53,6 +53,9 @@ var _bg_panel: Panel
 var _anchor_start_pos: Vector2 = Vector2.ZERO
 var _movement_timer: Timer = null
 
+var _anim_tween: Tween = null
+var _dismissing: bool = false
+
 # ============================================
 # STATIC BIND API
 # ============================================
@@ -193,11 +196,34 @@ func _check_anchor_moved() -> void:
 	if not visible or _anchor_node == null or not is_instance_valid(_anchor_node):
 		dismiss()
 		return
-	if _anchor_node.global_position.distance_to(_anchor_start_pos) > 1.0:
+	# Compare rect centers, not origin: press-squash animations scale the
+	# anchor around its center pivot, shifting the transform origin without
+	# actually moving the control.
+	if _anchor_node.get_global_rect().get_center().distance_to(_anchor_start_pos) > 1.0:
 		dismiss()
 
 func dismiss() -> void:
+	if _dismissing:
+		return
+	_dismissing = true
 	_stop_movement_timer()
+	if Engine.is_editor_hint() or not is_inside_tree():
+		super.dismiss()
+		return
+	if _anim_tween and _anim_tween.is_valid():
+		_anim_tween.kill()
+	_anim_tween = create_tween()
+	_anim_tween.set_parallel(true)
+	_anim_tween.set_trans(M3Motion.EASE_EXIT_TRANS)
+	_anim_tween.set_ease(M3Motion.EASE_EXIT)
+	for node in [_bg_panel, _label, _rich_label]:
+		_anim_tween.tween_property(node, "modulate:a", 0.0, M3Motion.STATE)
+	_anim_tween.set_parallel(false)
+	_anim_tween.tween_callback(_finish_dismiss)
+
+func _finish_dismiss() -> void:
+	if not _dismissing:
+		return
 	super.dismiss()
 
 func _create_visuals():
@@ -227,7 +253,7 @@ func _position_and_show():
 	
 	# Store anchor starting position for scroll dismissal
 	if _anchor_node and is_instance_valid(_anchor_node):
-		_anchor_start_pos = _anchor_node.global_position
+		_anchor_start_pos = _anchor_node.get_global_rect().get_center()
 	_start_movement_timer()
 	
 	# Rich tooltips need text set BEFORE measurement (get_content_height)
@@ -261,6 +287,21 @@ func _position_and_show():
 		var pad = M3Units.dp(RICH_PADDING)
 		_rich_label.position = Vector2(pos.x + pad, pos.y + pad)
 		_rich_label.size = Vector2(tooltip_size.x - pad * 2, tooltip_size.y - pad * 2)
+
+	_animate_in()
+
+func _animate_in() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	if _anim_tween and _anim_tween.is_valid():
+		_anim_tween.kill()
+	_anim_tween = create_tween()
+	_anim_tween.set_parallel(true)
+	_anim_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	_anim_tween.set_ease(M3Motion.EASE_FADE)
+	for node in [_bg_panel, _label, _rich_label]:
+		node.modulate.a = 0.0
+		_anim_tween.tween_property(node, "modulate:a", 1.0, M3Motion.STATE)
 
 func _get_anchor_rect() -> Rect2:
 	if not _anchor_node:

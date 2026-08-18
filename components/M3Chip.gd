@@ -309,7 +309,11 @@ func _get_variant_colors(selected: bool) -> Dictionary:
 func _update_theme():
 	if not _cached_style_normal:
 		return
-	
+
+	if _state_tween and _state_tween.is_valid():
+		_state_tween.kill()
+	_fading_style = null
+
 	var spec = _get_size_spec()
 	var radius = M3Units.dp(spec["radius"])
 	var pad_h = M3Units.dp(spec["padding_h"])
@@ -342,10 +346,15 @@ func _update_theme():
 	_configure_chip_stylebox(_cached_style_hover, hover_bg, radius, margins.left, margins.right, border_w, border_c, shadow_size, shadow_off, shadow_col)
 	
 	_configure_chip_stylebox(_cached_style_pressed, pressed_bg, radius, margins.left, margins.right, border_w, border_c, 0, shadow_off, shadow_col)
+
+	# Hover+press shares the pressed colors; without this the unconfigured
+	# stylebox renders as the default light-gray fill on mouse clicks.
+	_configure_chip_stylebox(_cached_style_hover_pressed, pressed_bg, radius, margins.left, margins.right, border_w, border_c, 0, shadow_off, shadow_col)
 	
 	_configure_chip_stylebox(_cached_style_disabled, disabled_bg, radius, margins.left, margins.right, border_w, border_c)
 	
-	_configure_chip_stylebox(_cached_style_focus, bg, radius, margins.left, margins.right, 2, focus_border)
+	# Focus stylebox: bg only — the ring is drawn globally by FocusSubManager
+	_configure_chip_stylebox(_cached_style_focus, bg, radius, margins.left, margins.right, 0, focus_border)
 	add_theme_stylebox_override("focus", _cached_style_focus)
 	
 	add_theme_color_override("font_color", text)
@@ -385,8 +394,10 @@ func _compute_content_margins(pad_h: int) -> Dictionary:
 func _configure_chip_stylebox(style: StyleBoxFlat, bg: Color, radius: int, left_margin: int, right_margin: int, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:
 		return
-	
-	style.bg_color = bg
+
+	_style_bg_targets[style] = bg
+	if style != _fading_style:
+		style.bg_color = bg
 	style.set_corner_radius_all(radius)
 	style.content_margin_top = 0
 	style.content_margin_bottom = 0
@@ -430,6 +441,18 @@ func _update_checked_icon():
 		_checked_icon_node.visible = false
 	if was_visible != _checked_icon_node.visible:
 		_update_theme()
+		if _checked_icon_node.visible:
+			_animate_checked_icon_pop()
+
+func _animate_checked_icon_pop():
+	if Engine.is_editor_hint() or not is_node_ready():
+		return
+	_checked_icon_node.pivot_offset = _checked_icon_node.size / 2.0
+	_checked_icon_node.scale = Vector2.ZERO
+	var pop_tween := create_tween()
+	pop_tween.set_trans(M3Motion.EASE_POP_TRANS)
+	pop_tween.set_ease(M3Motion.EASE_POP)
+	pop_tween.tween_property(_checked_icon_node, "scale", Vector2.ONE, M3Motion.OVERLAY)
 
 func _update_close_icon():
 	if not _close_icon_node:
@@ -480,6 +503,7 @@ func _update_icon_color(_colors: Dictionary = {}, _selected_colors: Dictionary =
 func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
 		_update_icon_positions()
+		pivot_offset = size / 2.0
 
 func _update_icon_positions():
 	if not _icon_node:

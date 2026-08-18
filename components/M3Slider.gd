@@ -205,6 +205,30 @@ var _is_dragging_primary: bool = false
 var _is_focused: bool = false
 var _prev_value: float = 0.0  # Value before current drag/click interaction
 
+var _handle_morph: float = 0.0
+var _handle_tween: Tween = null
+
+func _animate_handle() -> void:
+	var target: float = 1.0 if (_is_dragging or _is_dragging_range or _is_focused) else 0.0
+	if Engine.is_editor_hint() or not is_inside_tree():
+		_handle_morph = target
+		_request_redraw()
+		return
+	if is_equal_approx(_handle_morph, target):
+		return
+	if _handle_tween and _handle_tween.is_valid():
+		_handle_tween.kill()
+	var start: float = _handle_morph
+	_handle_tween = create_tween()
+	_handle_tween.set_trans(M3Motion.EASE_FADE_TRANS)
+	_handle_tween.set_ease(M3Motion.EASE_FADE)
+	_handle_tween.tween_method(
+		func(t: float):
+			_handle_morph = lerpf(start, target, t)
+			_request_redraw(),
+		0.0, 1.0, M3Motion.STATE
+	)
+
 var _effective_min: float = 0.0
 var _effective_max: float = 100.0
 var _effective_step: float = 1.0
@@ -644,6 +668,7 @@ func _connect_signals():
 
 func _on_focus_changed(has_focus: bool):
 	_is_focused = has_focus
+	_animate_handle()
 	_request_redraw()
 
 # ============================================
@@ -702,7 +727,7 @@ func _on_drag_started():
 	
 	var mouse_local = get_global_mouse_position() - global_position
 	var primary_axis = _cached_handle_axis if _overlay else _get_axis_position(value)
-	var hit_radius = _get_handle_w() * 3
+	var hit_radius = _get_handle_w_hit() * 3
 	var is_on_handle: bool
 	if _is_vertical():
 		is_on_handle = abs(mouse_local.y - primary_axis) <= hit_radius
@@ -712,6 +737,7 @@ func _on_drag_started():
 	_is_dragging = true
 	_is_dragging_primary = is_on_handle
 	drag_started.emit()
+	_animate_handle()
 	_request_redraw()
 	_update_bubble()
 
@@ -720,6 +746,7 @@ func _on_drag_ended(_value_changed: bool):
 	_is_dragging_primary = false
 	_prev_value = value
 	drag_ended.emit(_value_changed)
+	_animate_handle()
 	_request_redraw()
 	_update_bubble()
 
@@ -834,9 +861,14 @@ func _make_point(axis_pos: float, perp_offset: float = 0.0) -> Vector2:
 # ============================================
 
 func _get_handle_w() -> float:
-	# When dragging or focused, use thin line (2dp) for cleaner interaction
-	if _is_dragging or _is_dragging_range or _is_focused:
-		return M3Units.dp(2)
+	# Handle thins to a 2dp line while dragging or focused; morph is tweened
+	var wide: float = M3Units.dp(SIZE_SPECS[slider_size]["handle_w"])
+	var thin: float = M3Units.dp(2)
+	return lerpf(wide, thin, _handle_morph)
+
+## Resting (wide) handle width for hit-testing. The animated morph is cosmetic
+## and must never shrink the interactive area mid-animation.
+func _get_handle_w_hit() -> float:
 	return M3Units.dp(SIZE_SPECS[slider_size]["handle_w"])
 
 func _get_handle_h() -> float:
@@ -1381,9 +1413,9 @@ func _on_range_hitbox_input(event: InputEvent):
 				var hit_h: float
 				if _is_vertical():
 					hit_w = _get_handle_h() * 2
-					hit_h = _get_handle_w() * 4
+					hit_h = _get_handle_w_hit() * 4
 				else:
-					hit_w = _get_handle_w() * 4
+					hit_w = _get_handle_w_hit() * 4
 					hit_h = _get_handle_h() * 2
 				var hit_rect = Rect2(
 					Vector2(range_handle_pos.x - hit_w / 2, range_handle_pos.y - hit_h / 2),
@@ -1391,11 +1423,13 @@ func _on_range_hitbox_input(event: InputEvent):
 				)
 				if hit_rect.has_point(local_pos):
 					_is_dragging_range = true
+					_animate_handle()
 					accept_event()
-			else:
-				if _is_dragging_range:
-					_is_dragging_range = false
-					accept_event()
+		else:
+			if _is_dragging_range:
+				_is_dragging_range = false
+				_animate_handle()
+				accept_event()
 	
 	elif event is InputEventMouseMotion:
 		if _is_dragging_range:
