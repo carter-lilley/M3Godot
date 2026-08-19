@@ -669,6 +669,11 @@ func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
 		_update_icon_position()
 		pivot_offset = size / 2.0
+	elif what == NOTIFICATION_TRANSFORM_CHANGED:
+		# FocusSubManager enables transform notifications while this button is
+		# the focus target; forward so the global ring tracks ancestor motion.
+		if has_focus():
+			FocusSubManager.notify_geometry_changed(self)
 
 func _update_icon_position():
 	if not _icon_node or not _icon_node.visible:

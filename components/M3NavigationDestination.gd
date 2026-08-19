@@ -572,6 +572,11 @@ func _notification(what: int):
 		NOTIFICATION_MOUSE_EXIT:
 			_hovered = false
 			queue_redraw()
+		NOTIFICATION_TRANSFORM_CHANGED:
+			# Forwarded to the global focus ring (it enables transform
+			# notifications while this destination is the focus target).
+			if has_focus():
+				FocusSubManager.notify_geometry_changed(self)
 
 # ============================================
 # THEME

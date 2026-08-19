@@ -1209,6 +1209,8 @@ func _notification(what: int):
 			if _visual_layer and _visual_layer.is_inside_tree() and is_inside_tree():
 				sync_visual_transform()
 				_mark_visuals_position_synced()
+			if has_focus():
+				FocusSubManager.notify_geometry_changed(self)
 
 func _gui_input(event: InputEvent):
 	if not clickable:
