@@ -355,22 +355,23 @@ func _on_submenu_dismissed():
 	_submenu = null
 	_submenu_item_index = -1
 
-func _close_submenu():
+func _close_submenu(restore_focus: bool = true):
 	if _is_closing_submenu:
 		return
 	_is_closing_submenu = true
-	
+
 	# Suppress BEFORE dismissing to prevent focus-grab from re-triggering submenu open
 	if _renderer and _submenu_item_index >= 0:
 		_renderer._suppress_submenu = true
-	
+
 	if _submenu and is_instance_valid(_submenu) and _submenu.is_open():
 		if _submenu.dismissed.is_connected(_on_submenu_dismissed):
 			_submenu.dismissed.disconnect(_on_submenu_dismissed)
 		_submenu.dismiss()
-	
+
 	if _renderer and _submenu_item_index >= 0:
-		_renderer.grab_item_focus(_submenu_item_index)
+		if restore_focus:
+			_renderer.grab_item_focus(_submenu_item_index)
 		_renderer._suppress_submenu = false
 		_renderer.set_submenu_open(_submenu_item_index, false)
 		_renderer.set_forced_focus_index(-1)
@@ -381,11 +382,11 @@ func _close_submenu():
 	_is_closing_submenu = false
 
 func _on_focus_changed(index: int):
-	# Only close the submenu if focus moved to a different submenu item.
-	# Hovering normal items in the parent menu keeps the submenu open.
+	# Focus/hover landing on any different item closes the open submenu.
+	# Focus already moved deliberately, so don't yank it back to the old
+	# summoner item.
 	if _submenu and _submenu.is_open() and index != _submenu_item_index:
-		if index >= 0 and index < _items.size() and _items[index].submenu != null:
-			_close_submenu()
+		_close_submenu(false)
 
 func _on_navigated_off_edge(direction: String):
 	# Always close the menu when navigating off an edge
