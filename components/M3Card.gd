@@ -75,6 +75,9 @@ const MIN_HEIGHT_HORIZONTAL_DP := 80.0
 		_update_text()
 		_update_appearance()
 		_rebuild_actions()
+		# Alignment moves the scale pivot; re-stamp while a focus scale is active.
+		if not content_scale.is_equal_approx(Vector2.ONE):
+			sync_visual_transform()
 
 var media_aspect_ratio: float = -1.0:
 	set(value):
@@ -202,6 +205,11 @@ var content_scale: Vector2 = Vector2.ONE:
 		content_scale = value
 		_apply_content_scale()
 
+## When true (LIST/CAROUSEL), unfocused cards shrink toward their
+## content-alignment edge and the focused card fills its cell exactly.
+## When false (GRID), the focused card grows from the center beyond its cell.
+var focus_scale_inverted: bool = false
+
 var _text_content: VBoxContainer
 var _text_row: HBoxContainer
 var _headline_label: Label = null
@@ -305,7 +313,7 @@ func m3_get_focus_geometry() -> Dictionary:
 		origin = global_position
 	var xform := Transform2D().translated(origin)
 	if not content_scale.is_equal_approx(Vector2.ONE):
-		var pivot := size * 0.5
+		var pivot := _get_content_scale_pivot()
 		xform = xform * Transform2D().translated(pivot) * Transform2D().scaled(content_scale) * Transform2D().translated(-pivot)
 		radius *= content_scale.x
 	return { "rect": xform * local_rect, "radius": radius }
@@ -430,7 +438,7 @@ func sync_visual_transform_with_offset(base_offset: Vector2) -> void:
 
 	var base_transform := Transform2D().translated(base_offset)
 	if not content_scale.is_equal_approx(Vector2.ONE):
-		var pivot := size * 0.5
+		var pivot := _get_content_scale_pivot()
 		base_transform = base_transform * Transform2D().translated(pivot) * Transform2D().scaled(content_scale) * Transform2D().translated(-pivot)
 
 	_last_visual_transform = base_transform
@@ -484,6 +492,28 @@ func _apply_visual_draw_index() -> void:
 
 func _apply_content_scale() -> void:
 	sync_visual_transform()
+
+## Pivot for the focus content_scale, in card-local coordinates.
+## GRID (non-inverted): center, so growth radiates evenly and the grid's
+## symmetric focus-overflow margins hold. LIST/CAROUSEL (inverted): pin the
+## content-alignment edge so the content block stays glued to it while
+## unfocused cards shrink inward.
+func _get_content_scale_pivot() -> Vector2:
+	var pivot := size * 0.5
+	if not focus_scale_inverted:
+		return pivot
+	match content_alignment:
+		ContentAlignment.START:
+			if card_layout_mode == LayoutMode.VERTICAL:
+				pivot.y = 0.0
+			else:
+				pivot.x = 0.0
+		ContentAlignment.END:
+			if card_layout_mode == LayoutMode.VERTICAL:
+				pivot.y = size.y
+			else:
+				pivot.x = size.x
+	return pivot
 
 
 func _ready():
