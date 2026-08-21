@@ -78,6 +78,7 @@ const COMPACT_ICON_SIZES = {
 		_update_theme()
 		_update_icon_position()
 		queue_redraw()
+		_notify_focus_geometry()
 
 @export var destination_label: String = "":
 	set(value):
@@ -94,6 +95,7 @@ const COMPACT_ICON_SIZES = {
 		_update_size()
 		_update_theme()
 		_update_layout()
+		_notify_focus_geometry()
 
 @export var label_visibility: M3Navigation.LabelVisibility = M3Navigation.LabelVisibility.LABELED:
 	set(value):
@@ -102,6 +104,7 @@ const COMPACT_ICON_SIZES = {
 		label_visibility = value
 		_update_label()
 		_update_layout()
+		_notify_focus_geometry()
 
 @export var active: bool = false:
 	set(value):
@@ -113,6 +116,7 @@ const COMPACT_ICON_SIZES = {
 		_update_theme()
 		_update_label()
 		_animate_pill()
+		_notify_focus_geometry()
 
 # ============================================
 # INTERNAL
@@ -181,6 +185,10 @@ func _ready():
 	_label_node.visible = false
 	_label_node.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	add_child(_label_node)
+	# The expanded pill width reads the label's minimum size, which starts at
+	# 0 before first layout (falls back to an estimate) — push the real width
+	# to the focus ring once the text settles.
+	_label_node.minimum_size_changed.connect(_notify_focus_geometry)
 	
 	_update_icon()
 	_update_label()
@@ -443,10 +451,18 @@ func _draw_rounded_rect(rect: Rect2, color: Color, radius: float):
 func _update_layout():
 	if not _label_node:
 		return
-	
+
 	_update_label_position()
 	_update_button_width()
 	queue_redraw()
+	_notify_focus_geometry()
+
+## Pill geometry changes are internal to _draw() — the Control's own rect
+## doesn't change, so the global focus ring would never see them otherwise.
+## Guarded: free for the vast majority of destinations that aren't focused.
+func _notify_focus_geometry() -> void:
+	if has_focus():
+		FocusSubManager.notify_geometry_changed(self)
 
 func _update_button_width():
 	if destination_layout == LayoutMode.VERTICAL:
