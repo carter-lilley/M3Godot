@@ -32,6 +32,8 @@ var _submenu_item_index: int = -1
 var _summoner_start_pos: Vector2 = Vector2.ZERO
 var _dismissing: bool = false
 var _dismiss_tween: Tween = null
+var _last_submenu_close_msec: int = -10000
+var _tracking_grace_until_msec: int = 0
 var _movement_timer: Timer = null
 var _parent_menu: M3Menu = null
 var _item_selected: bool = false
@@ -88,6 +90,12 @@ func _check_summoner_moved() -> void:
 	if not track_summoner:
 		return
 	if not visible:
+		return
+	if Time.get_ticks_msec() < _tracking_grace_until_msec:
+		# Still in the post-popup grace window; re-baseline instead of
+		# dismissing while open animations settle.
+		if _summoner != null and is_instance_valid(_summoner):
+			_summoner_start_pos = _summoner.get_global_rect().get_center()
 		return
 	if _summoner == null or not is_instance_valid(_summoner):
 		dismiss()
@@ -161,6 +169,9 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 	# anchor around its center pivot, shifting the transform origin by >1px and
 	# tripping the moved-check. The center is invariant under center-pivot scale.
 	_summoner_start_pos = anchor.get_global_rect().get_center()
+	# Grace period: the summoner menu's own open animation scales its renderer,
+	# which shifts the anchor's global rect and would trip the moved-check.
+	_tracking_grace_until_msec = Time.get_ticks_msec() + 300
 	_set_summoner_active(true)
 	_start_movement_timer()
 	
@@ -308,7 +319,14 @@ func _on_submenu_requested(index: int):
 	var item = _items[index]
 	if item.submenu == null:
 		return
-	
+
+	# Already open for this item: re-requesting (dpad-right to enter, or hover
+	# re-entry) must not close+re-popup — that replays both animations. Just
+	# move focus into the submenu.
+	if _submenu == item.submenu and _submenu_item_index == index and _submenu.is_open():
+		grab_first_item_focus()
+		return
+
 	# Close any existing submenu first
 	_close_submenu()
 	
@@ -359,6 +377,7 @@ func _close_submenu(restore_focus: bool = true):
 	if _is_closing_submenu:
 		return
 	_is_closing_submenu = true
+	_last_submenu_close_msec = Time.get_ticks_msec()
 
 	# Suppress BEFORE dismissing to prevent focus-grab from re-triggering submenu open
 	if _renderer and _submenu_item_index >= 0:
@@ -389,8 +408,22 @@ func _on_focus_changed(index: int):
 		_close_submenu(false)
 
 func _on_navigated_off_edge(direction: String):
+	# A held dpad cascades: the tick that closed the submenu is followed by
+	# repeats that would instantly dismiss this menu too. Swallow horizontal
+	# edge-dismissals briefly after a submenu close.
+	if (direction == "left" or direction == "right") \
+			and Time.get_ticks_msec() - _last_submenu_close_msec < 250:
+		return
 	# Always close the menu when navigating off an edge
 	dismiss()
+
+## Move focus to the submenu's first focusable item without re-popping it.
+func grab_first_item_focus() -> void:
+	if _renderer == null:
+		return
+	var idx: int = _renderer._get_first_focusable_index()
+	if idx >= 0:
+		_renderer.grab_item_focus(idx)
 
 func _on_overlay_focus_changed(control: Control) -> void:
 	# If a submenu is open, its focus is outside this menu's subtree, so the
@@ -438,6 +471,14 @@ func _input(event: InputEvent):
 				_renderer._suppress_submenu = false
 			get_viewport().set_input_as_handled()
 			return
+		# Swallow vertical navigation while a submenu is open but focus is NOT
+		# inside it: letting it through would move parent focus underneath the
+		# submenu (closing it and opening the next item's submenu). Left
+		# closes, right enters. Focus inside the submenu navigates normally.
+		if event.is_action_pressed("ui_up") or event.is_action_pressed("ui_down"):
+			var focus_owner := get_viewport().gui_get_focus_owner()
+			if focus_owner == null or not _submenu.is_ancestor_of(focus_owner):
+				get_viewport().set_input_as_handled()
 		return
 	
 	# Let base class handle ui_cancel dismissal

@@ -182,7 +182,11 @@ func _focus_first_item(silent: bool) -> void:
 		if node is Button and node.focus_mode != Control.FOCUS_NONE:
 			if silent and UIManager:
 				UIManager.suppress_next_focus_sound()
+			# The programmatic first-focus must not auto-summon a submenu;
+			# submenus open on deliberate hover or right-arrow instead.
+			_suppress_submenu = true
 			node.grab_focus()
+			_suppress_submenu = false
 			break
 
 func _animate_popup() -> void:
