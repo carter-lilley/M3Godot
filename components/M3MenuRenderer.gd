@@ -48,7 +48,6 @@ enum MenuAlignment { START, CENTER, END }
 signal item_pressed(index: int)
 signal submenu_requested(index: int)
 signal focus_changed(index: int)
-signal navigated_off_edge(direction: String)
 signal dismissed
 
 # ============================================
@@ -69,8 +68,8 @@ var _multi_select: bool = false
 var _radio_group: bool = false
 var _submenu_mode: bool = false
 var _submenu_rect: Rect2 = Rect2()
-var _suppress_submenu: bool = false
 var _forced_focus_index: int = -1
+var _summoner_highlight_index: int = -1
 var _focused_item_index: int = -1
 var _touch_active: bool = false
 var _font_icon_template: FontIconSettings = null
@@ -182,11 +181,7 @@ func _focus_first_item(silent: bool) -> void:
 		if node is Button and node.focus_mode != Control.FOCUS_NONE:
 			if silent and UIManager:
 				UIManager.suppress_next_focus_sound()
-			# The programmatic first-focus must not auto-summon a submenu;
-			# submenus open on deliberate hover or right-arrow instead.
-			_suppress_submenu = true
 			node.grab_focus()
-			_suppress_submenu = false
 			break
 
 func _animate_popup() -> void:
@@ -788,33 +783,22 @@ func _input(event: InputEvent):
 					dismiss()
 		return
 	
-	# Right arrow opens submenu for the focused item
-	if event.is_action_pressed("ui_right"):
-		var focused_idx = _focused_item_index
-		if focused_idx >= 0 and focused_idx < _menu_items.size() and _menu_items[focused_idx].submenu != null:
-			submenu_requested.emit(focused_idx)
-			get_viewport().set_input_as_handled()
-			return
-	
-	# Edge navigation: up/down close at vertical edges; left/right always close
-	# (vertical menus have no horizontal focus movement, so left/right are universal close)
+	# Edge navigation: up/down wrap around; left/right are swallowed.
+	# Directional open/close was removed — submenus open on press/click and
+	# close via back, item selection, or outside click.
 	var focused_idx = _focused_item_index
 	if focused_idx < 0:
 		return
 	var first_idx = _get_first_focusable_index()
 	var last_idx = _get_last_focusable_index()
-	
+
 	if event.is_action_pressed("ui_up") and focused_idx == first_idx:
-		navigated_off_edge.emit("up")
+		grab_item_focus(last_idx)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_down") and focused_idx == last_idx:
-		navigated_off_edge.emit("down")
+		grab_item_focus(first_idx)
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("ui_left"):
-		navigated_off_edge.emit("left")
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("ui_right"):
-		navigated_off_edge.emit("right")
+	elif event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right"):
 		get_viewport().set_input_as_handled()
 
 func _get_focused_item_index() -> int:
@@ -843,22 +827,21 @@ func _on_item_mouse_entered(index: int):
 	# fight the ScrollContainer's drag scrolling.
 	if _touch_active:
 		return
+	# While a submenu is pinned open, hover must not steal focus back to the
+	# parent — submenus switch on press/click, not hover.
+	if _submenu_rect.has_area():
+		return
 	# Mouse hover grabs focus so there's only ever one focused item
 	if index >= 0 and index < _item_nodes.size():
 		var node = _item_nodes[index]
 		if not node.has_focus():
 			node.grab_focus()
-		elif not _suppress_submenu and index >= 0 and index < _menu_items.size():
-			# Already focused but mouse re-entered — re-request submenu if applicable
-			var item = _menu_items[index]
-			if item.submenu != null:
-				submenu_requested.emit(index)
 
 func _on_item_focus_exited(index: int):
 	if _focused_item_index == index:
 		_focused_item_index = -1
-	# Visual unfocus: revert to forced-focus state only
-	_update_item_visual(index, index == _forced_focus_index)
+	# Visual unfocus: revert to forced-focus or summoner-highlight state
+	_refresh_item_state_visual(index)
 
 func _on_item_focus_entered(index: int):
 	_update_item_visual(index, true)
@@ -870,10 +853,6 @@ func _on_item_focus_entered(index: int):
 		_scroll.ensure_control_visible(_item_nodes[index])
 	
 	focus_changed.emit(index)
-	if not _suppress_submenu and index >= 0 and index < _menu_items.size():
-		var item = _menu_items[index]
-		if item.submenu != null:
-			submenu_requested.emit(index)
 
 func _activate_focused():
 	var focused = get_viewport().gui_get_focus_owner()
@@ -999,9 +978,39 @@ func _update_item_visual(index: int, is_focused: bool):
 
 func _update_item_visuals():
 	for i in range(_item_nodes.size()):
-		var node = _item_nodes[i]
-		var is_focused = node.has_focus() or i == _forced_focus_index
-		_update_item_visual(i, is_focused)
+		_refresh_item_state_visual(i)
+
+## Recompute one item's visual from its actual state: full focus treatment if
+## focused/forced, dimmed "open summoner" highlight if it owns an open
+## submenu, plain otherwise.
+func _refresh_item_state_visual(index: int) -> void:
+	if index < 0 or index >= _item_nodes.size():
+		return
+	var node = _item_nodes[index]
+	if node.has_focus() or index == _forced_focus_index:
+		_update_item_visual(index, true)
+	elif index == _summoner_highlight_index:
+		_update_summoner_visual(index)
+	else:
+		_update_item_visual(index, false)
+
+func _update_summoner_visual(index: int):
+	if index < 0 or index >= _item_nodes.size():
+		return
+	var node = _item_nodes[index]
+	if node.has_focus():
+		_update_item_visual(index, true)
+		return
+	_update_item_visual(index, false)
+	# Dimmed highlight: visibly "open" but clearly not the focused item
+	if node.has_meta("m3_menu_overlay"):
+		var overlay = node.get_meta("m3_menu_overlay") as Panel
+		var sb = node.get_meta("m3_menu_overlay_sb") as StyleBoxFlat
+		if sb:
+			var c: Color = _get_selected_bg_color()
+			c.a *= 0.5
+			sb.bg_color = c
+		overlay.visible = true
 
 func _update_item_checkmark(index: int):
 	if index < 0 or index >= _item_nodes.size():
@@ -1046,15 +1055,24 @@ func grab_item_focus(index: int):
 func set_forced_focus_index(index: int):
 	var old_forced = _forced_focus_index
 	_forced_focus_index = index
-	
+
 	# Update old forced item to its actual focus state
 	if old_forced >= 0 and old_forced != index and old_forced < _item_nodes.size():
-		var node = _item_nodes[old_forced]
-		_update_item_visual(old_forced, node.has_focus())
-	
+		_refresh_item_state_visual(old_forced)
+
 	# Update new forced item
 	if index >= 0 and index != old_forced and index < _item_nodes.size():
 		_update_item_visual(index, true)
+
+## Mark an item as the summoner of an open submenu: dimmed "open" highlight
+## distinct from the full focus treatment of the actually-focused item.
+func set_summoner_highlight(index: int):
+	var old := _summoner_highlight_index
+	_summoner_highlight_index = index
+	if old >= 0 and old != index and old < _item_nodes.size():
+		_refresh_item_state_visual(old)
+	if index >= 0 and index != old and index < _item_nodes.size():
+		_refresh_item_state_visual(index)
 
 func refresh_theme():
 	_cache_variant_colors()

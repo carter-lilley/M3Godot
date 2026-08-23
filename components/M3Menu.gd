@@ -32,7 +32,6 @@ var _submenu_item_index: int = -1
 var _summoner_start_pos: Vector2 = Vector2.ZERO
 var _dismissing: bool = false
 var _dismiss_tween: Tween = null
-var _last_submenu_close_msec: int = -10000
 var _tracking_grace_until_msec: int = 0
 var _movement_timer: Timer = null
 var _parent_menu: M3Menu = null
@@ -208,8 +207,6 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 		_renderer.submenu_requested.connect(_on_submenu_requested)
 	if not _renderer.focus_changed.is_connected(_on_focus_changed):
 		_renderer.focus_changed.connect(_on_focus_changed)
-	if not _renderer.navigated_off_edge.is_connected(_on_navigated_off_edge):
-		_renderer.navigated_off_edge.connect(_on_navigated_off_edge)
 
 ## Check if the menu is currently open.
 func is_open() -> bool:
@@ -268,8 +265,6 @@ func dismiss():
 		_renderer.focus_changed.disconnect(_on_focus_changed)
 	if _renderer and _renderer.submenu_requested.is_connected(_on_submenu_requested):
 		_renderer.submenu_requested.disconnect(_on_submenu_requested)
-	if _renderer and _renderer.navigated_off_edge.is_connected(_on_navigated_off_edge):
-		_renderer.navigated_off_edge.disconnect(_on_navigated_off_edge)
 
 	# The dismiss fade is cosmetic only: the menu stops accepting input and
 	# returns focus immediately so the out-animation can never swallow clicks
@@ -334,10 +329,11 @@ func _on_submenu_requested(index: int):
 	_submenu_item_index = index
 	_submenu._parent_menu = self
 	
-	# Keep parent item visually focused while submenu is open
+	# Mark the parent item as the open summoner (dimmed highlight + chevron),
+	# visually distinct from the actually-focused item inside the submenu
 	if _renderer:
 		_renderer.set_submenu_open(index, true)
-		_renderer.set_forced_focus_index(index)
+		_renderer.set_summoner_highlight(index)
 	
 	# Anchor submenu to the item node
 	var item_node: Control = null
@@ -361,13 +357,11 @@ func _on_submenu_dismissed():
 		dismiss()
 		return
 	
-	# Otherwise, restore chevron, clear forced focus, and return focus to parent item
+	# Otherwise, restore chevron, clear summoner highlight, and return focus to parent item
 	if _renderer and _submenu_item_index >= 0:
-		_renderer._suppress_submenu = true
 		_renderer.grab_item_focus(_submenu_item_index)
-		_renderer._suppress_submenu = false
 		_renderer.set_submenu_open(_submenu_item_index, false)
-		_renderer.set_forced_focus_index(-1)
+		_renderer.set_summoner_highlight(-1)
 	if _renderer:
 		_renderer.set_submenu_rect(Rect2())
 	_submenu = null
@@ -377,11 +371,6 @@ func _close_submenu(restore_focus: bool = true):
 	if _is_closing_submenu:
 		return
 	_is_closing_submenu = true
-	_last_submenu_close_msec = Time.get_ticks_msec()
-
-	# Suppress BEFORE dismissing to prevent focus-grab from re-triggering submenu open
-	if _renderer and _submenu_item_index >= 0:
-		_renderer._suppress_submenu = true
 
 	if _submenu and is_instance_valid(_submenu) and _submenu.is_open():
 		if _submenu.dismissed.is_connected(_on_submenu_dismissed):
@@ -391,9 +380,8 @@ func _close_submenu(restore_focus: bool = true):
 	if _renderer and _submenu_item_index >= 0:
 		if restore_focus:
 			_renderer.grab_item_focus(_submenu_item_index)
-		_renderer._suppress_submenu = false
 		_renderer.set_submenu_open(_submenu_item_index, false)
-		_renderer.set_forced_focus_index(-1)
+		_renderer.set_summoner_highlight(-1)
 	if _renderer:
 		_renderer.set_submenu_rect(Rect2())
 	_submenu = null
@@ -406,16 +394,6 @@ func _on_focus_changed(index: int):
 	# summoner item.
 	if _submenu and _submenu.is_open() and index != _submenu_item_index:
 		_close_submenu(false)
-
-func _on_navigated_off_edge(direction: String):
-	# A held dpad cascades: the tick that closed the submenu is followed by
-	# repeats that would instantly dismiss this menu too. Swallow horizontal
-	# edge-dismissals briefly after a submenu close.
-	if (direction == "left" or direction == "right") \
-			and Time.get_ticks_msec() - _last_submenu_close_msec < 250:
-		return
-	# Always close the menu when navigating off an edge
-	dismiss()
 
 ## Move focus to the submenu's first focusable item without re-popping it.
 func grab_first_item_focus() -> void:
@@ -443,44 +421,20 @@ func get_menu_rect() -> Rect2:
 func _input(event: InputEvent):
 	if not visible:
 		return
-	
+
 	# If a submenu is open, let it handle ui_cancel first
 	if _submenu and _submenu.is_open():
 		if event.is_action_pressed("ui_cancel"):
 			return
-		
-		# Determine close direction based on submenu position relative to parent menu
-		var parent_rect = get_menu_rect()
-		var submenu_rect = _submenu.get_menu_rect()
-		var submenu_on_right = submenu_rect.position.x >= parent_rect.position.x + parent_rect.size.x - 1
-		
-		# Close with the key that points back toward the parent menu
-		if submenu_on_right and event.is_action_pressed("ui_left"):
-			_close_submenu()
-			if _renderer and _submenu_item_index >= 0:
-				_renderer._suppress_submenu = true
-				_renderer.grab_item_focus(_submenu_item_index)
-				_renderer._suppress_submenu = false
-			get_viewport().set_input_as_handled()
-			return
-		elif not submenu_on_right and event.is_action_pressed("ui_right"):
-			_close_submenu()
-			if _renderer and _submenu_item_index >= 0:
-				_renderer._suppress_submenu = true
-				_renderer.grab_item_focus(_submenu_item_index)
-				_renderer._suppress_submenu = false
-			get_viewport().set_input_as_handled()
-			return
 		# Swallow vertical navigation while a submenu is open but focus is NOT
 		# inside it: letting it through would move parent focus underneath the
-		# submenu (closing it and opening the next item's submenu). Left
-		# closes, right enters. Focus inside the submenu navigates normally.
+		# submenu. Back closes, press/click activates.
 		if event.is_action_pressed("ui_up") or event.is_action_pressed("ui_down"):
 			var focus_owner := get_viewport().gui_get_focus_owner()
 			if focus_owner == null or not _submenu.is_ancestor_of(focus_owner):
 				get_viewport().set_input_as_handled()
 		return
-	
+
 	# Let base class handle ui_cancel dismissal
 	super._input(event)
 
