@@ -394,6 +394,16 @@ func _on_text_changed(_new_text: String):
 # ============================================
 
 func _draw():
+	# Self-correct the float state: programmatic text assignment emits no
+	# signal and may happen after the last layout pass, leaving the label
+	# resting over the text. LineEdit always redraws on text change, so the
+	# snap here catches it without caller cooperation.
+	if _ready_called and not (_label_tween and _label_tween.is_running()):
+		var should_float := _should_float_label() and not label_text.is_empty()
+		var target: float = 1.0 if should_float else 0.0
+		if not is_equal_approx(_label_float_t, target):
+			_label_float_t = target
+			_update_layout()
 	var container_height = M3Units.dp(CONTAINER_HEIGHT)
 	var rect = Rect2(Vector2.ZERO, Vector2(size.x, container_height))
 	
