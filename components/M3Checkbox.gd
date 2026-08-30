@@ -51,6 +51,38 @@ var _check_tween: Tween = null
 var _cached_box_sb: StyleBoxFlat
 var _cached_overlay_sb: StyleBoxFlat
 
+# Real touches are recorded so engine-emulated mouse events (generated from
+# them on touchscreens) can be told apart from injected second-screen taps
+# (AynThor push_input), which arrive as emulated mouse events with no
+# preceding real touch.
+var _last_real_touch_frame: int = -100
+var _last_real_touch_pos: Vector2 = Vector2.ZERO
+
+func _gui_input(event: InputEvent):
+	if event is InputEventScreenTouch:
+		_last_real_touch_frame = Engine.get_process_frames()
+		_last_real_touch_pos = event.position
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.device == InputEvent.DEVICE_ID_EMULATION \
+				and Engine.get_process_frames() == _last_real_touch_frame \
+				and event.position.distance_to(_last_real_touch_pos) < 4.0:
+			# Engine-emulated duplicate of the touch already handled natively.
+			return
+		var vp = get_viewport()
+		if vp is SubViewport:
+			# Injected second-screen tap: BaseButton ignores pushed mouse events
+			# because hover only refreshes on the next frame (stale at press).
+			accept_event()
+			if event.pressed:
+				grab_focus()
+				button_down.emit()
+			else:
+				button_up.emit()
+				if not disabled:
+					set_pressed_no_signal(not button_pressed)
+					toggled.emit(button_pressed)
+
 # ============================================
 # LIFECYCLE
 # ============================================
