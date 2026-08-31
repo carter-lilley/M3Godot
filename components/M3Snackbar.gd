@@ -448,3 +448,11 @@ func refresh_theme():
 	_update_appearance()
 	if is_instance_valid(_progress):
 		_progress.refresh_theme()
+
+func refresh_scale() -> void:
+	if not is_node_ready():
+		return
+	if is_instance_valid(_leading_icon):
+		_leading_icon.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
+	_position_snackbar()
+	refresh_theme()

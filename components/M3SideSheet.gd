@@ -35,6 +35,7 @@ func _build_sheet_layout():
 	
 	# Margin container for content padding
 	var margin = MarginContainer.new()
+	margin.name = "ContentMargin"
 	margin.add_theme_constant_override("margin_top", M3Units.dp(CONTENT_MARGIN_TOP))
 	margin.add_theme_constant_override("margin_left", M3Units.dp(CONTENT_MARGIN_LEFT))
 	margin.add_theme_constant_override("margin_right", M3Units.dp(CONTENT_MARGIN_RIGHT))
@@ -87,6 +88,24 @@ func _update_corner_radii():
 		style.corner_radius_bottom_left = M3Units.dp(CORNER_RADIUS)
 		style.corner_radius_top_right = 0
 		style.corner_radius_bottom_right = 0
+
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	if _sheet_container:
+		var margin = _sheet_container.get_node_or_null("ContentMargin")
+		if margin:
+			margin.add_theme_constant_override("margin_top", M3Units.dp(CONTENT_MARGIN_TOP))
+			margin.add_theme_constant_override("margin_left", M3Units.dp(CONTENT_MARGIN_LEFT))
+			margin.add_theme_constant_override("margin_right", M3Units.dp(CONTENT_MARGIN_RIGHT))
+		if visible:
+			var screen_size = _get_screen_size()
+			var width_px = M3Units.dp(SHEET_WIDTH)
+			_sheet_container.size = Vector2(width_px, screen_size.y)
+			_sheet_container.position = Vector2(screen_size.x - width_px, 0)
+		else:
+			_position_sheet()
+	super.refresh_scale()
 
 # ============================================
 # ANIMATION

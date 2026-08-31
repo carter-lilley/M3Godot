@@ -2,8 +2,6 @@
 class_name M3Card
 extends Button
 
-const EffectStack = preload("res://components/effects/effect_stack.gd")
-const EffectBase = preload("res://components/effects/effect_base.gd")
 const RoundedMediaShader = preload("res://addons/m3/shaders/card/rounded_media.gdshader")
 
 enum Variant { ELEVATED, FILLED, OUTLINED }
@@ -27,6 +25,10 @@ const ACTIONS_GAP := 8.0
 const LABEL_GAP := 4.0
 const MIN_HEIGHT_VERTICAL_DP := 240.0
 const MIN_HEIGHT_HORIZONTAL_DP := 80.0
+
+## When false, the default M3 minimum card height is not applied, allowing
+## compact cards (e.g. dense related-games rows) with explicit sizing.
+@export var enforce_min_height: bool = true
 
 @export var card_variant: Variant = Variant.ELEVATED:
 	set(value):
@@ -143,6 +145,9 @@ func end_bulk_layout() -> void:
 			return
 		media_texture = value
 		if _ready_called:
+			# Media presence may have changed: reserve or reclaim the media
+			# area before drawing (async-loaded textures arrive after layout).
+			_update_media_panel_size(true)
 			_update_media()
 
 @export var headline: String = "":
@@ -168,6 +173,16 @@ func end_bulk_layout() -> void:
 		clickable = value
 		if _ready_called:
 			_apply_clickable_state()
+
+## Replaces the variant background color when set (alpha > 0). State overlays
+## (hover/focus/press) and disabled dimming still apply on top of it.
+@export var bg_color_override: Color = Color.TRANSPARENT:
+	set(value):
+		if value == bg_color_override:
+			return
+		bg_color_override = value
+		if _ready_called:
+			queue_redraw()
 
 var show_background: bool = true:
 	set(value):
@@ -245,7 +260,7 @@ var _text_bounds: Rect2 = Rect2()
 var _media_canvas_item: RID = RID()
 # Unclipped overlay carrier: no longer draws a focus ring itself (the ring is
 # global, owned by FocusSubManager) but remains as the transform/draw-index
-# parent for focus overlays such as game_card's focus effect stack.
+# parent for subclass focus overlays.
 var _focus_ring_canvas_item: RID = RID()
 var _rounded_media_material: ShaderMaterial
 var _text_canvas_item: RID = RID()
@@ -285,7 +300,7 @@ func _update_focus_ring_bounds() -> void:
 	_focus_ring_bounds_queued = false
 	# The focus ring itself is drawn globally by FocusSubManager. This remains
 	# as a hook for subclasses that size focus overlays from the card's focus
-	# bounds (see game_card._update_focus_ring_bounds).
+	# bounds.
 
 ## FocusSubManager geometry protocol: media bounds when backgroundless, full
 ## card otherwise, in canvas coordinates and including the focus-pop
@@ -644,7 +659,7 @@ func _enter_tree():
 		_setup_rs_items()
 		_update_media()
 		_update_focus_ring_bounds()
-	# Subclasses may need to rebuild node-less effect stacks after RS items are
+	# Subclasses may need to rebuild node-less media content after RS items are
 	# recreated (e.g. when a pooled card re-enters the tree).
 	_on_rs_items_recreated()
 	# Recompute media bounds now that subclasses have had a chance to recreate
@@ -840,6 +855,9 @@ func _configure_stylebox_for_state():
 			bg = M3Theme.get_surface()
 			outline_w = M3Units.dp(1)
 			outline_c = M3Theme.get_outline()
+
+	if bg_color_override.a > 0.0:
+		bg = bg_color_override
 	
 	if disabled:
 		bg = M3Theme.disabled_color(bg)
@@ -931,17 +949,21 @@ static func _pick_supporting_spec(height_dp: float) -> Dictionary:
 			return spec
 	return _SUPPORTING_SCALE[-1]
 
-static func get_min_text_height_dp(card_height_dp: float) -> float:
+static func get_min_text_height_dp(card_height_dp: float, has_headline: bool = true) -> float:
 	const PAD := 16.0
 	const HALF_PAD := 8.0
 	const LABEL_GAP := 4.0
-	var headline_spec = _pick_headline_spec(card_height_dp)
-	var headline_h = headline_spec.size
+	var headline_h = 0.0
+	if has_headline:
+		var headline_spec = _pick_headline_spec(card_height_dp)
+		headline_h = headline_spec.size
 	if card_height_dp < 100.0:
 		return HALF_PAD + headline_h + PAD
 	var supporting_spec = _pick_supporting_spec(card_height_dp)
 	var supporting_h = supporting_spec.size
-	return HALF_PAD + headline_h + LABEL_GAP + supporting_h + PAD
+	if has_headline:
+		return HALF_PAD + headline_h + LABEL_GAP + supporting_h + PAD
+	return HALF_PAD + supporting_h + PAD
 
 func _get_horizontal_alignment() -> HorizontalAlignment:
 	match content_alignment:
@@ -1122,9 +1144,10 @@ func _update_text_labels() -> void:
 		_supporting_label.remove_theme_constant_override("shadow_outline_size")
 
 func _update_appearance():
-	var default_min_height = MIN_HEIGHT_VERTICAL_DP if card_layout_mode == LayoutMode.VERTICAL else MIN_HEIGHT_HORIZONTAL_DP
-	if custom_minimum_size.y <= 0:
-		custom_minimum_size.y = M3Units.dp(default_min_height)
+	if enforce_min_height:
+		var default_min_height = MIN_HEIGHT_VERTICAL_DP if card_layout_mode == LayoutMode.VERTICAL else MIN_HEIGHT_HORIZONTAL_DP
+		if custom_minimum_size.y <= 0:
+			custom_minimum_size.y = M3Units.dp(default_min_height)
 	queue_redraw()
 
 func _rebuild_actions():
@@ -1180,6 +1203,18 @@ func refresh_theme():
 	_cached_fonts = M3Theme.load_fonts()
 	_update_text()
 	queue_redraw()
+
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	custom_minimum_size.y = 0
+	_update_appearance()
+	if _text_content:
+		_text_content.add_theme_constant_override("separation", M3Units.dp(LABEL_GAP))
+	_applied_headline_size_dp = -1.0
+	_applied_supporting_size_dp = -1.0
+	_update_media_panel_size(true)
+	refresh_theme()
 
 var _hovered: bool = false
 var _is_pressing: bool = false
@@ -1289,7 +1324,7 @@ func _update_media_panel_size(force: bool = false) -> void:
 				var desired_h = card_w / media_aspect_ratio
 				var max_h = card_h
 				if show_text_margin:
-					var min_text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale()))
+					var min_text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale(), not headline.is_empty()))
 					max_h = card_h - min_text_h
 				media_h = clampf(desired_h, M3Units.dp(40.0), maxf(M3Units.dp(40.0), max_h))
 				if desired_h > max_h and max_h > 0:
@@ -1297,7 +1332,7 @@ func _update_media_panel_size(force: bool = false) -> void:
 			else:
 				var min_text_h := 0.0
 				if show_text_margin:
-					min_text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale()))
+					min_text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale(), not headline.is_empty()))
 				media_h = maxf(M3Units.dp(40.0), card_h - min_text_h)
 				if not show_text_margin:
 					media_h = card_h
@@ -1310,7 +1345,7 @@ func _update_media_panel_size(force: bool = false) -> void:
 				media_y = text_h
 			elif content_alignment == ContentAlignment.CENTER:
 				if show_text_margin:
-					text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale()))
+					text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale(), not headline.is_empty()))
 					var total_h = media_h + text_h
 					var start_y = (card_h - total_h) / 2.0
 					media_y = start_y
@@ -1425,22 +1460,12 @@ func _update_media_panel_size(force: bool = false) -> void:
 		call_deferred("_update_focus_ring_bounds")
 
 func _refresh_media_effects() -> void:
+	# Generic hook: media content that manages its own animated state exposes
+	# force_refresh(). Subclass-specific effect systems should override this.
 	if not _media_content:
 		return
 	if _media_content.has_method("force_refresh"):
-		var stack = _media_content
-		stack.force_refresh()
-		return
-	var stack := []
-	stack.append(_media_content)
-	while stack.size() > 0:
-		var node = stack.pop_back() as Node
-		if node is EffectBase:
-			var effect: EffectBase = node
-			if effect.enabled:
-				effect._update_shader_params()
-		for child in node.get_children():
-			stack.append(child)
+		_media_content.force_refresh()
 
 func _update_text_content_sizes() -> void:
 	if not _text_content or not _ready_called:
@@ -1456,7 +1481,7 @@ func _update_text_content_sizes() -> void:
 			if not is_equal_approx(_text_content.custom_minimum_size.x, min_text_w):
 				_text_content.custom_minimum_size.x = min_text_w
 	else:
-		var min_text_h = M3Units.dp(get_min_text_height_dp(size.y / M3Units.get_scale()))
+		var min_text_h = M3Units.dp(get_min_text_height_dp(size.y / M3Units.get_scale(), not headline.is_empty()))
 		if not is_equal_approx(_text_content.custom_minimum_size.y, min_text_h):
 			_text_content.custom_minimum_size.y = min_text_h
 

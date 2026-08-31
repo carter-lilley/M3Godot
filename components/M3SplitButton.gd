@@ -82,8 +82,7 @@ var _menu_active: bool = false
 # ============================================
 
 func _ready():
-	# 2dp gap between halves
-	add_theme_constant_override("separation", M3Units.dp(2))
+	_update_separation()
 	
 	_main_btn = M3Button.new()
 	_main_btn.button_size = button_size
@@ -108,6 +107,10 @@ func _ready():
 # ============================================
 # CORNER RADIUS
 # ============================================
+
+func _update_separation():
+	# 2dp gap between halves
+	add_theme_constant_override("separation", M3Units.dp(2))
 
 func _update_corner_radii():
 	if not _main_btn or not _dropdown_btn:
@@ -164,3 +167,7 @@ func refresh_theme():
 	if _dropdown_btn:
 		_dropdown_btn.refresh_theme()
 	_update_corner_radii()
+
+func refresh_scale() -> void:
+	_update_separation()
+	refresh_theme()

@@ -841,3 +841,14 @@ func refresh_theme():
 	_update_theme()
 	_update_layout()
 	queue_redraw()
+
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	_update_icons()
+	var min_size = _get_minimum_size()
+	if custom_minimum_size.y < min_size.y:
+		custom_minimum_size.y = min_size.y
+	if custom_minimum_size.x < min_size.x:
+		custom_minimum_size.x = min_size.x
+	refresh_theme()

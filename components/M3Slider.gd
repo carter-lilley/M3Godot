@@ -601,6 +601,10 @@ func refresh_theme():
 	_update_icons()
 	_request_redraw()
 
+func refresh_scale() -> void:
+	_update_size()
+	refresh_theme()
+
 func _update_range_hitbox_position():
 	if slider_variant != Variant.RANGE:
 		return

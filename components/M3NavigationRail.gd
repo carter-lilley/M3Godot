@@ -455,22 +455,16 @@ func _rebuild_destinations():
 			in_section = true
 			
 			var spacer = Control.new()
-			spacer.custom_minimum_size = Vector2(0, M3Units.dp(12))
 			spacer.visible = expanded
 			_items_area.add_child(spacer)
 			_header_nodes.append(spacer)
 			
 			var header = Label.new()
 			header.text = data.label
-			header.add_theme_font_size_override("font_size", M3Units.dp(12))
 			header.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
 			header.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 			
 			var header_container = MarginContainer.new()
-			header_container.add_theme_constant_override("margin_left", M3Units.dp(36))
-			header_container.add_theme_constant_override("margin_right", M3Units.dp(16))
-			header_container.add_theme_constant_override("margin_top", M3Units.dp(12))
-			header_container.add_theme_constant_override("margin_bottom", M3Units.dp(8))
 			header_container.add_child(header)
 			header_container.visible = expanded
 			_items_area.add_child(header_container)
@@ -502,6 +496,7 @@ func _rebuild_destinations():
 	_bottom_flex_spacer.name = "BottomFlexSpacer"
 	_items_area.add_child(_bottom_flex_spacer)
 	
+	_update_header_scale()
 	_apply_compact_level()
 	
 	if header_content and header_content.get_parent() == _content_container:
@@ -515,6 +510,18 @@ func _rebuild_destinations():
 	_cached_destinations = destinations.duplicate()
 	_cached_items_height = 0.0
 	_update_menu_gravity()
+
+func _update_header_scale():
+	for node in _header_nodes:
+		if node is MarginContainer:
+			node.add_theme_constant_override("margin_left", M3Units.dp(36))
+			node.add_theme_constant_override("margin_right", M3Units.dp(16))
+			node.add_theme_constant_override("margin_top", M3Units.dp(12))
+			node.add_theme_constant_override("margin_bottom", M3Units.dp(8))
+		else:
+			node.custom_minimum_size = Vector2(0, M3Units.dp(12))
+	for label in _header_labels:
+		label.add_theme_font_size_override("font_size", M3Units.dp(12))
 
 func _update_destinations_in_place():
 	"""Update existing items without destroying them."""
@@ -602,3 +609,14 @@ func refresh_theme():
 	# Update header label colors
 	for label in _header_labels:
 		label.add_theme_color_override("font_color", M3Theme.get_on_surface_variant())
+
+func refresh_scale() -> void:
+	if _top_spacer:
+		_top_spacer.custom_minimum_size = Vector2(0, M3Units.dp(12))
+	if _bottom_spacer:
+		_bottom_spacer.custom_minimum_size = Vector2(0, M3Units.dp(12))
+	if _footer_wrapper:
+		_footer_wrapper.add_theme_constant_override("margin_top", M3Units.dp(12))
+		_footer_wrapper.add_theme_constant_override("margin_bottom", M3Units.dp(12))
+	_update_header_scale()
+	super.refresh_scale()

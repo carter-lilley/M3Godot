@@ -253,6 +253,10 @@ func refresh_theme():
 	_endpoint_color = M3Theme.get_on_surface()
 	queue_redraw()
 
+func refresh_scale() -> void:
+	_invalidate_min_size()
+	refresh_theme()
+
 # ============================================
 # API
 # ============================================

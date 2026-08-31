@@ -256,6 +256,10 @@ func _position_and_show():
 		_anchor_start_pos = _anchor_node.get_global_rect().get_center()
 	_start_movement_timer()
 	
+	_reposition()
+	_animate_in()
+
+func _reposition():
 	# Rich tooltips need text set BEFORE measurement (get_content_height)
 	if _tooltip_variant == Variant.RICH:
 		_rich_label.text = _tooltip_text
@@ -287,8 +291,6 @@ func _position_and_show():
 		var pad = M3Units.dp(RICH_PADDING)
 		_rich_label.position = Vector2(pos.x + pad, pos.y + pad)
 		_rich_label.size = Vector2(tooltip_size.x - pad * 2, tooltip_size.y - pad * 2)
-
-	_animate_in()
 
 func _animate_in() -> void:
 	if Engine.is_editor_hint() or not is_inside_tree():
@@ -465,3 +467,9 @@ func _update_appearance():
 		
 		var sb = M3Theme.make_shadow(bg, M3Units.dpi(RICH_RADIUS), 4, Vector2(0, 2), Color(0, 0, 0, 0.18))
 		_bg_panel.add_theme_stylebox_override("panel", sb)
+
+func refresh_scale() -> void:
+	if not _bg_panel:
+		return
+	_update_appearance()
+	_reposition()

@@ -434,6 +434,12 @@ func _update_disabled_state():
 # PUBLIC API
 # ============================================
 
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	_update_mode()
+	_update_shape()
+
 func get_selected_indices() -> Array[int]:
 	return _selected_indices.duplicate()
 

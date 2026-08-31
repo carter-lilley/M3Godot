@@ -206,6 +206,12 @@ func refresh_theme():
 	for item in _destination_items:
 		item.refresh_theme()
 
+func refresh_scale() -> void:
+	_update_dimensions()
+	_update_destinations_layout()
+	_update_content_position()
+	refresh_theme()
+
 # ============================================
 # PUBLIC API
 # ============================================

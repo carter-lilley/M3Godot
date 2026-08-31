@@ -602,3 +602,9 @@ func refresh_theme():
 	_invalidate_color_cache()
 	super.refresh_theme()
 	queue_redraw()
+
+func refresh_scale() -> void:
+	super.refresh_scale()
+	_update_icon()
+	_update_label()
+	_update_layout()

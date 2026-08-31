@@ -811,3 +811,109 @@ static func generate_theme() -> Theme:
 	while _generated_theme_cache.size() > MAX_GENERATED_THEMES:
 		_generated_theme_cache.erase(_generated_theme_cache.keys()[0])
 	return t
+
+
+# ============================================
+# TARGETED CONTROL STYLING
+# Scoped alternatives to generate_theme() for individual native controls,
+# without restyling every Button/LineEdit/etc. under a subtree.
+# Re-apply after seed/dark-mode/scale changes (colors + dp are baked in).
+# ============================================
+
+## M3 primary tabs: transparent tabs with a primary bottom-border indicator
+## on the active tab. All states share identical geometry (no layout jump).
+## The tab's left content margin is 0 so the first tab's text sits flush
+## with the content above it.
+static func style_tab_container(tc: TabContainer) -> void:
+	if not tc:
+		return
+	var fonts := load_fonts()
+	var prim := get_primary()
+	var on_surf := get_on_surface()
+	var on_surf_var := get_on_surface_variant()
+	var pad_v := M3Units.dpi(10)
+	var gap_after := M3Units.dpi(16)
+	var indicator_w := M3Units.dpi(3)
+
+	var base := StyleBoxFlat.new()
+	base.bg_color = Color.TRANSPARENT
+	base.content_margin_left = 0
+	base.content_margin_right = gap_after
+	base.content_margin_top = pad_v
+	base.content_margin_bottom = pad_v
+	base.border_color = Color.TRANSPARENT
+	base.border_width_bottom = indicator_w
+	base.anti_aliasing = true
+
+	var selected: StyleBoxFlat = base.duplicate()
+	selected.border_color = prim
+
+	var hovered: StyleBoxFlat = base.duplicate()
+	hovered.bg_color = Color(on_surf.r, on_surf.g, on_surf.b, OPACITY_HOVER)
+
+	var focused: StyleBoxFlat = base.duplicate()
+	focused.bg_color = Color(on_surf.r, on_surf.g, on_surf.b, OPACITY_HOVER)
+	focused.border_color = prim
+	focused.border_width_top = M3Units.dpi(1)
+	focused.border_width_left = M3Units.dpi(1)
+	focused.border_width_right = M3Units.dpi(1)
+
+	tc.add_theme_stylebox_override("tab_selected", selected)
+	tc.add_theme_stylebox_override("tab_unselected", base)
+	tc.add_theme_stylebox_override("tab_hovered", hovered)
+	tc.add_theme_stylebox_override("tab_disabled", base.duplicate())
+	tc.add_theme_stylebox_override("tab_focus", focused)
+
+	# Kill the default theme's leading offset: TabContainer positions the tab
+	# bar at tabbar_background's left margin + side_margin.
+	tc.add_theme_stylebox_override("tabbar_background", make_empty())
+	tc.add_theme_constant_override("side_margin", 0)
+
+	tc.add_theme_color_override("font_unselected_color", on_surf_var)
+	tc.add_theme_color_override("font_selected_color", prim)
+	tc.add_theme_color_override("font_hovered_color", on_surf)
+	tc.add_theme_color_override("font_disabled_color", disabled_color(on_surf))
+	if fonts.has("medium") and fonts["medium"]:
+		tc.add_theme_font_override("font", fonts["medium"])
+	tc.add_theme_font_size_override("font_size", M3Units.dpi(TYPE_TITLE_SMALL))
+
+
+## M3 scrollbar: transparent track, thin rounded grabber that brightens on
+## hover and tints toward the content color when pressed.
+static func style_scrollbar(sb: ScrollBar) -> void:
+	if not sb:
+		return
+	var outl := get_outline()
+	var on_surf := get_on_surface()
+	var margin := M3Units.dpi(2)
+	var radius := M3Units.dpi(SCROLLBAR_THICKNESS / 2)
+
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color.TRANSPARENT
+	track.set_corner_radius_all(radius)
+	track.content_margin_left = margin
+	track.content_margin_top = margin
+	track.content_margin_right = margin
+	track.content_margin_bottom = margin
+
+	var grabber := StyleBoxFlat.new()
+	grabber.bg_color = Color(outl.r, outl.g, outl.b, SCROLLBAR_OPACITY)
+	grabber.set_corner_radius_all(radius)
+
+	var grabber_hi := StyleBoxFlat.new()
+	grabber_hi.bg_color = Color(outl.r, outl.g, outl.b, SCROLLBAR_OPACITY_HOVER)
+	grabber_hi.set_corner_radius_all(radius)
+
+	var grabber_pressed := StyleBoxFlat.new()
+	grabber_pressed.bg_color = Color(on_surf.r, on_surf.g, on_surf.b, SCROLLBAR_OPACITY_PRESSED)
+	grabber_pressed.set_corner_radius_all(radius)
+
+	for stylebox in [track, grabber, grabber_hi, grabber_pressed]:
+		stylebox.anti_aliasing = true
+		stylebox.anti_aliasing_size = 1.0
+
+	sb.add_theme_stylebox_override("scroll", track)
+	sb.add_theme_stylebox_override("scroll_focus", track)
+	sb.add_theme_stylebox_override("grabber", grabber)
+	sb.add_theme_stylebox_override("grabber_highlight", grabber_hi)
+	sb.add_theme_stylebox_override("grabber_pressed", grabber_pressed)

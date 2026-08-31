@@ -63,6 +63,7 @@ func _build_sheet_layout():
 	
 	# Margin container for content padding
 	var margin = MarginContainer.new()
+	margin.name = "ContentMargin"
 	margin.add_theme_constant_override("margin_top", M3Units.dp(CONTENT_MARGIN_TOP))
 	margin.add_theme_constant_override("margin_left", M3Units.dp(CONTENT_MARGIN_LEFT))
 	margin.add_theme_constant_override("margin_right", M3Units.dp(CONTENT_MARGIN_RIGHT))
@@ -80,12 +81,14 @@ func _build_sheet_layout():
 	_drag_handle.custom_minimum_size = Vector2(M3Units.dp(DRAG_HANDLE_WIDTH), M3Units.dp(DRAG_HANDLE_HEIGHT))
 	_drag_handle.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var drag_margin = Control.new()
+	drag_margin.name = "DragMargin"
 	drag_margin.custom_minimum_size = Vector2(0, M3Units.dp(16))
 	root.add_child(drag_margin)
 	root.add_child(_drag_handle)
 	
 	# Header padding
 	var header_pad = Control.new()
+	header_pad.name = "HeaderPad"
 	header_pad.custom_minimum_size = Vector2(0, M3Units.dp(8))
 	root.add_child(header_pad)
 	
@@ -146,8 +149,8 @@ func _update_drag_handle():
 		var style = _drag_handle.get_theme_stylebox("panel")
 		if not style is StyleBoxFlat:
 			style = StyleBoxFlat.new()
-			style.set_corner_radius_all(int(M3Units.dp(DRAG_HANDLE_HEIGHT) / 2.0))
 			_drag_handle.add_theme_stylebox_override("panel", style)
+		style.set_corner_radius_all(int(M3Units.dp(DRAG_HANDLE_HEIGHT) / 2.0))
 		style.bg_color = M3Theme.get_on_surface_variant()
 
 func _update_height():
@@ -155,6 +158,40 @@ func _update_height():
 		var height_px = M3Units.dp(peek_height)
 		_sheet_container.size.y = height_px
 		_position_sheet()
+
+func _reposition_open():
+	if not _sheet_container:
+		return
+	var screen_size = _get_screen_size()
+	var height_px = M3Units.dp(peek_height)
+	var width_px = _get_sheet_width(screen_size.x)
+	_sheet_container.size = Vector2(width_px, height_px)
+	_sheet_container.position = Vector2((screen_size.x - width_px) / 2.0, screen_size.y - height_px)
+
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	var margin = _sheet_container.get_node_or_null("ContentMargin") if _sheet_container else null
+	if margin:
+		margin.add_theme_constant_override("margin_top", M3Units.dp(CONTENT_MARGIN_TOP))
+		margin.add_theme_constant_override("margin_left", M3Units.dp(CONTENT_MARGIN_LEFT))
+		margin.add_theme_constant_override("margin_right", M3Units.dp(CONTENT_MARGIN_RIGHT))
+		var root = margin.get_child(0) if margin.get_child_count() > 0 else null
+		if root:
+			var drag_margin = root.get_node_or_null("DragMargin")
+			if drag_margin:
+				drag_margin.custom_minimum_size = Vector2(0, M3Units.dp(16))
+			var header_pad = root.get_node_or_null("HeaderPad")
+			if header_pad:
+				header_pad.custom_minimum_size = Vector2(0, M3Units.dp(8))
+	if _drag_handle:
+		_drag_handle.custom_minimum_size = Vector2(M3Units.dp(DRAG_HANDLE_WIDTH), M3Units.dp(DRAG_HANDLE_HEIGHT))
+	_update_drag_handle()
+	if visible:
+		_reposition_open()
+	else:
+		_position_sheet()
+	super.refresh_scale()
 
 # ============================================
 # ANIMATION

@@ -1081,3 +1081,19 @@ func refresh_theme():
 	for i in range(_menu_items.size()):
 		if _menu_items[i].checkable:
 			_update_item_checkmark(i)
+
+func refresh_scale() -> void:
+	_ensure_visuals()
+	if _font_icon_template:
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+	if is_open() and _anchor_control and is_instance_valid(_anchor_control):
+		var restore_focus := _focused_item_index
+		_cached_fonts = M3Theme.load_fonts()
+		_clear_items()
+		_build_items()
+		_calculate_size_and_position()
+		if restore_focus >= 0 and restore_focus < _item_nodes.size():
+			if UIManager:
+				UIManager.suppress_next_focus_sound()
+			grab_item_focus(restore_focus)
+	refresh_theme()

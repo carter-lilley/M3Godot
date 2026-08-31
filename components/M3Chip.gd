@@ -54,6 +54,15 @@ const CHIP_SPEC = {
 		elevated = value
 		_update_theme()
 
+## Renders the chip in the accent family (primary_container bg +
+## on_primary_container text, no border) regardless of variant.
+@export var accent_colored: bool = false:
+	set(value):
+		if value == accent_colored:
+			return
+		accent_colored = value
+		_update_theme()
+
 @export var leading_icon: String = "":
 	set(value):
 		if value == leading_icon:
@@ -251,43 +260,49 @@ func _get_size_spec() -> Dictionary:
 
 func _compute_variant_colors(_selected: bool) -> Dictionary:
 	var result = {}
-	
-	match chip_variant:
-		ChipVariant.ASSIST:
-			result.bg = Color.TRANSPARENT
-			result.text = M3Theme.get_on_surface_variant()
-			result.border_c = M3Theme.get_outline()
-			result.border_w = 1
-		
-		ChipVariant.FILTER:
-			if _selected or button_pressed:
-				result.bg = M3Theme.get_secondary_container()
-				result.text = M3Theme.get_on_secondary_container()
-				result.border_c = Color.TRANSPARENT
-				result.border_w = 0
-			else:
+
+	if accent_colored:
+		result.bg = M3Theme.get_primary_container()
+		result.text = M3Theme.get_on_primary_container()
+		result.border_c = Color.TRANSPARENT
+		result.border_w = 0
+	else:
+		match chip_variant:
+			ChipVariant.ASSIST:
 				result.bg = Color.TRANSPARENT
 				result.text = M3Theme.get_on_surface_variant()
 				result.border_c = M3Theme.get_outline()
 				result.border_w = 1
-		
-		ChipVariant.INPUT:
-			result.bg = Color.TRANSPARENT
-			result.text = M3Theme.get_on_surface_variant()
-			result.border_c = M3Theme.get_outline()
-			result.border_w = 1
-		
-		ChipVariant.SUGGESTION:
-			if elevated:
-				result.bg = M3Theme.get_surface_container_low()
-				result.text = M3Theme.get_on_surface_variant()
-				result.border_c = Color.TRANSPARENT
-				result.border_w = 0
-			else:
+
+			ChipVariant.FILTER:
+				if _selected or button_pressed:
+					result.bg = M3Theme.get_secondary_container()
+					result.text = M3Theme.get_on_secondary_container()
+					result.border_c = Color.TRANSPARENT
+					result.border_w = 0
+				else:
+					result.bg = Color.TRANSPARENT
+					result.text = M3Theme.get_on_surface_variant()
+					result.border_c = M3Theme.get_outline()
+					result.border_w = 1
+
+			ChipVariant.INPUT:
 				result.bg = Color.TRANSPARENT
 				result.text = M3Theme.get_on_surface_variant()
 				result.border_c = M3Theme.get_outline()
 				result.border_w = 1
+
+			ChipVariant.SUGGESTION:
+				if elevated:
+					result.bg = M3Theme.get_surface_container_low()
+					result.text = M3Theme.get_on_surface_variant()
+					result.border_c = Color.TRANSPARENT
+					result.border_w = 0
+				else:
+					result.bg = Color.TRANSPARENT
+					result.text = M3Theme.get_on_surface_variant()
+					result.border_c = M3Theme.get_outline()
+					result.border_w = 1
 	
 	# Common properties for all variants
 	result.hover_bg = M3Theme.state_overlay(M3Theme.get_surface(), result.text, M3Theme.OPACITY_HOVER)
@@ -299,7 +314,7 @@ func _compute_variant_colors(_selected: bool) -> Dictionary:
 	return result
 
 func _get_variant_colors(selected: bool) -> Dictionary:
-	var state = hash([chip_variant, button_type, disabled, elevated])
+	var state = hash([chip_variant, button_type, disabled, elevated, accent_colored])
 	if _cached_colors_hash != state:
 		_cached_colors_hash = state
 		_cached_colors_normal = _compute_variant_colors(false)
@@ -544,3 +559,10 @@ func _on_toggled(_pressed: bool):
 func refresh_theme():
 	_cached_colors_hash = -1
 	_update_theme()
+
+func refresh_scale() -> void:
+	super.refresh_scale()
+	_update_checked_icon()
+	_update_close_icon()
+	_update_trailing_icon()
+	call_deferred("_update_icon_positions")

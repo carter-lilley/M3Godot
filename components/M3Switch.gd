@@ -108,9 +108,7 @@ func _set(property: StringName, value: Variant) -> bool:
 	return false
 
 func _ready():
-	var track_width_px = M3Units.dp(TRACK_WIDTH)
-	var track_height_px = M3Units.dp(TRACK_HEIGHT)
-	custom_minimum_size = Vector2(track_width_px, track_height_px)
+	_update_size()
 	size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
@@ -134,6 +132,11 @@ func _exit_tree():
 
 func _get_minimum_size() -> Vector2:
 	return Vector2(M3Units.dp(TRACK_WIDTH), M3Units.dp(TRACK_HEIGHT))
+
+func _update_size() -> void:
+	var track_width_px = M3Units.dp(TRACK_WIDTH)
+	var track_height_px = M3Units.dp(TRACK_HEIGHT)
+	custom_minimum_size = Vector2(track_width_px, track_height_px)
 
 func _on_button_down():
 	_is_pressing = true
@@ -382,3 +385,18 @@ func _get_accent() -> Color:
 
 func refresh_theme():
 	queue_redraw()
+
+func refresh_scale() -> void:
+	_update_size()
+	if _font_icon_template:
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+	if _icon_node and _icon_node.icon_settings:
+		_icon_node.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
+	if _is_pressing:
+		_thumb_size_px = M3Units.dp(THUMB_PRESSED_SIZE)
+	elif button_pressed:
+		_thumb_size_px = M3Units.dp(THUMB_ON_SIZE)
+	else:
+		_thumb_size_px = M3Units.dp(THUMB_OFF_SIZE)
+	update_minimum_size()
+	refresh_theme()

@@ -372,3 +372,11 @@ func refresh_theme():
 	super.refresh_theme()
 	if _menu_button:
 		_menu_button.refresh_theme()
+
+func refresh_scale() -> void:
+	if _menu_wrapper:
+		_menu_wrapper.custom_minimum_size = Vector2(M3Units.dp(MENU_BUTTON_WIDTH), 0)
+	if _footer_wrapper:
+		_footer_wrapper.custom_minimum_size = Vector2(M3Units.dp(MENU_BUTTON_WIDTH), 0)
+	super.refresh_scale()
+	_update_menu_button_state()

@@ -641,6 +641,10 @@ func refresh_theme():
 	_cached_colors_hash = -1
 	_update_theme()
 
+func refresh_scale() -> void:
+	_update_size()
+	refresh_theme()
+
 func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {}):
 	if not _icon_node or not _icon_node.visible:
 		return

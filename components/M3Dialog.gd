@@ -693,6 +693,48 @@ func refresh_theme():
 		return
 	_update_appearance()
 
+func _update_sizes():
+	if dialog_variant == Variant.BASIC:
+		if _vbox:
+			var top_bar_hbox = _vbox.get_node_or_null("TopBar")
+			if top_bar_hbox:
+				top_bar_hbox.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
+		if _title_body_spacer:
+			_title_body_spacer.custom_minimum_size = Vector2(0, M3Units.dp(16))
+		if _body_content_spacer:
+			_body_content_spacer.custom_minimum_size = Vector2(0, M3Units.dp(24))
+		if _actions_container:
+			_actions_container.custom_minimum_size = Vector2(0, M3Units.dp(BASIC_ACTIONS_HEIGHT))
+	else:
+		if _top_bar:
+			_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
+		if _scroll and _scroll.get_child_count() > 0:
+			var scroll_margin = _scroll.get_child(0)
+			if scroll_margin is MarginContainer:
+				var pad = M3Units.dp(PADDING)
+				scroll_margin.add_theme_constant_override("margin_left", pad)
+				scroll_margin.add_theme_constant_override("margin_right", pad)
+				scroll_margin.add_theme_constant_override("margin_top", pad)
+				scroll_margin.add_theme_constant_override("margin_bottom", pad)
+		if _scroll_content:
+			_scroll_content.add_theme_constant_override("separation", M3Units.dp(16))
+		if _bottom_actions:
+			_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_ACTIONS_HEIGHT))
+	if _actions_container:
+		_actions_container.add_theme_constant_override("separation", M3Units.dp(ACTIONS_GAP))
+	if _font_icon_template:
+		_font_icon_template.icon_size = M3Units.dp(ICON_SIZE)
+	if _hero_icon and _hero_icon.icon_settings:
+		_hero_icon.icon_settings.icon_size = M3Units.dp(ICON_SIZE)
+
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	_update_sizes()
+	refresh_theme()
+	if visible and is_inside_tree() and not Engine.is_editor_hint():
+		_position_dialog()
+
 # ============================================
 # STATIC FACTORIES
 # ============================================

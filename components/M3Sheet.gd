@@ -198,6 +198,15 @@ func refresh_theme():
 		_update_appearance()
 		_update_text()
 
+func refresh_scale() -> void:
+	if not _ready_called:
+		return
+	if _header:
+		_header.add_theme_constant_override("separation", M3Units.dp(12))
+	if _headline_label:
+		_headline_label.add_theme_font_size_override("font_size", M3Units.dp(20))
+	refresh_theme()
+
 func show_overlay():
 	var parent = M3Overlay.get_overlay_parent()
 	if parent and get_parent() == null:
