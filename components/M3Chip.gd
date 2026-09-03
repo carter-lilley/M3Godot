@@ -8,6 +8,13 @@ extends M3Button
 
 enum ChipVariant { ASSIST, FILTER, INPUT, SUGGESTION }
 
+## Tri-state cycling for FILTER chips: each click rotates
+## NEUTRAL -> INCLUDE -> EXCLUDE -> NEUTRAL and emits state_changed.
+## Use set_chip_state() for programmatic changes (the `checked` setter
+## emits toggled, which would be read as a user cycle).
+enum ChipState { NEUTRAL, INCLUDE, EXCLUDE }
+signal state_changed(state: ChipState)
+
 # ============================================
 # CHIP SPECS (single size, all in dp)
 # ============================================
@@ -21,9 +28,28 @@ const CHIP_SPEC = {
 	"font_size": 12,
 }
 
+## Smaller chip for space-constrained layouts (details sheet small mode).
+const DENSE_CHIP_SPEC = {
+	"height": 24,
+	"padding_h": 8,
+	"icon_size": 14,
+	"icon_gap": 3,
+	"radius": 8,
+	"font_size": 11,
+}
+
 # ============================================
 # EXPORTS
 # ============================================
+
+## Use the dense 24dp chip spec instead of the standard 32dp one.
+@export var dense: bool = false:
+	set(value):
+		if value == dense:
+			return
+		dense = value
+		_update_theme()
+		queue_redraw()
 
 @export var chip_variant: ChipVariant = ChipVariant.SUGGESTION:
 	set(value):
@@ -62,6 +88,23 @@ const CHIP_SPEC = {
 			return
 		accent_colored = value
 		_update_theme()
+
+## Enables NEUTRAL/INCLUDE/EXCLUDE cycling on FILTER chips.
+@export var tri_state: bool = false
+
+var chip_state: ChipState = ChipState.NEUTRAL
+
+## Programmatic state change; safe before _ready and never emits toggled.
+func set_chip_state(state: ChipState) -> void:
+	chip_state = state
+	set_pressed_no_signal(state != ChipState.NEUTRAL)
+	checked_icon_name = "close" if state == ChipState.EXCLUDE else "check"
+	_update_checked_icon()
+	_update_theme()
+
+func _cycle_tri_state() -> void:
+	set_chip_state((chip_state + 1) % 3 as ChipState)
+	state_changed.emit(chip_state)
 
 @export var leading_icon: String = "":
 	set(value):
@@ -256,7 +299,7 @@ func _on_close_icon_input(event: InputEvent):
 # ============================================
 
 func _get_size_spec() -> Dictionary:
-	return CHIP_SPEC
+	return DENSE_CHIP_SPEC if dense else CHIP_SPEC
 
 func _compute_variant_colors(_selected: bool) -> Dictionary:
 	var result = {}
@@ -275,7 +318,12 @@ func _compute_variant_colors(_selected: bool) -> Dictionary:
 				result.border_w = 1
 
 			ChipVariant.FILTER:
-				if _selected or button_pressed:
+				if tri_state and chip_state == ChipState.EXCLUDE:
+					result.bg = M3Theme.get_error_container()
+					result.text = M3Theme.get_on_error_container()
+					result.border_c = Color.TRANSPARENT
+					result.border_w = 0
+				elif _selected or button_pressed:
 					result.bg = M3Theme.get_secondary_container()
 					result.text = M3Theme.get_on_secondary_container()
 					result.border_c = Color.TRANSPARENT
@@ -314,7 +362,7 @@ func _compute_variant_colors(_selected: bool) -> Dictionary:
 	return result
 
 func _get_variant_colors(selected: bool) -> Dictionary:
-	var state = hash([chip_variant, button_type, disabled, elevated, accent_colored])
+	var state = hash([chip_variant, button_type, disabled, elevated, accent_colored, chip_state])
 	if _cached_colors_hash != state:
 		_cached_colors_hash = state
 		_cached_colors_normal = _compute_variant_colors(false)
@@ -550,6 +598,11 @@ func _update_icon_positions():
 		_trailing_icon_node.size = Vector2(icon_size, icon_size)
 
 func _on_toggled(_pressed: bool):
+	if tri_state and chip_variant == ChipVariant.FILTER:
+		# User click: cycle NEUTRAL -> INCLUDE -> EXCLUDE -> NEUTRAL. The base
+		# toggle already flipped button_pressed; set_chip_state corrects it.
+		_cycle_tri_state()
+		return
 	_update_checked_icon()
 	_update_trailing_icon()
 	_update_theme()

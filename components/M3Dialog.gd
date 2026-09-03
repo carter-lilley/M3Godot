@@ -228,7 +228,11 @@ func _ready():
 	_update_appearance()
 	_update_text()
 	_update_hero_icon()
-	
+	_apply_chrome_scale()
+	var viewport := get_viewport()
+	if viewport and not viewport.size_changed.is_connected(_apply_chrome_scale):
+		viewport.size_changed.connect(_apply_chrome_scale)
+
 	for btn in _actions:
 		if btn.get_parent() == null and _actions_container:
 			_actions_container.add_child(btn)
@@ -377,6 +381,7 @@ func _build_fullscreen_layout():
 	var scroll_margin = MarginContainer.new()
 	scroll_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll_margin = scroll_margin
 	var pad = M3Units.dp(PADDING)
 	scroll_margin.add_theme_constant_override("margin_left", pad)
 	scroll_margin.add_theme_constant_override("margin_right", pad)
@@ -466,6 +471,28 @@ func _on_scrim_input(event: InputEvent):
 func _on_close_button_pressed() -> void:
 	"""Default close-button behavior; subclasses can override to customize."""
 	dismiss()
+
+var _scroll_margin: MarginContainer = null
+
+## Compact fullscreen chrome for small screens (viewport < 600dp wide or
+## < 700dp tall, per _is_small_screen): tighter padding and shorter bars.
+const COMPACT_PADDING := 12.0
+const COMPACT_BAR_HEIGHT := 48.0
+
+func _apply_chrome_scale() -> void:
+	if dialog_variant != Variant.FULL_SCREEN or not is_inside_tree():
+		return
+	var small := _is_small_screen()
+	if is_instance_valid(_scroll_margin):
+		var pad := M3Units.dp(COMPACT_PADDING if small else PADDING)
+		_scroll_margin.add_theme_constant_override("margin_left", pad)
+		_scroll_margin.add_theme_constant_override("margin_right", pad)
+		_scroll_margin.add_theme_constant_override("margin_top", pad)
+		_scroll_margin.add_theme_constant_override("margin_bottom", pad)
+	if is_instance_valid(_top_bar):
+		_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BAR_HEIGHT if small else FULLSCREEN_TOP_BAR_HEIGHT))
+	if is_instance_valid(_bottom_actions):
+		_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BAR_HEIGHT if small else FULLSCREEN_ACTIONS_HEIGHT))
 
 func _is_small_screen() -> bool:
 	if not get_viewport():
