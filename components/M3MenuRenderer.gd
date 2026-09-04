@@ -68,6 +68,9 @@ var _multi_select: bool = false
 var _radio_group: bool = false
 var _submenu_mode: bool = false
 var _submenu_rect: Rect2 = Rect2()
+## Rect to cover when no submenu position fits on screen (small-screen
+## fallback): the parent menu's rect, supplied by M3Menu.
+var _cover_rect: Rect2 = Rect2()
 var _forced_focus_index: int = -1
 var _summoner_highlight_index: int = -1
 var _focused_item_index: int = -1
@@ -140,7 +143,7 @@ func _update_appearance():
 # PUBLIC API
 # ============================================
 
-func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = ColorVariant.STANDARD, alignment: MenuAlignment = MenuAlignment.START, auto_focus_first: bool = true, min_width: float = 0.0, multi_select: bool = false, radio_group: bool = false, submenu_mode: bool = false, silent_focus_first: bool = true):
+func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = ColorVariant.STANDARD, alignment: MenuAlignment = MenuAlignment.START, auto_focus_first: bool = true, min_width: float = 0.0, multi_select: bool = false, radio_group: bool = false, submenu_mode: bool = false, silent_focus_first: bool = true, cover_rect: Rect2 = Rect2()):
 	_ensure_visuals()
 	_cached_fonts = M3Theme.load_fonts()
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -153,6 +156,7 @@ func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = Co
 	_multi_select = multi_select
 	_radio_group = radio_group
 	_submenu_mode = submenu_mode
+	_cover_rect = cover_rect
 	_cache_variant_colors()
 	
 	_clear_items()
@@ -649,7 +653,7 @@ func _calculate_size_and_position():
 	
 	# Try positions with visible height
 	var positions = _compute_positions(anchor_rect, width, visible_height, gap)
-	
+
 	var pos: Vector2 = positions[0]
 	var found = false
 	# Prefer positions that are fully visible and don't overlap the anchor
@@ -665,10 +669,16 @@ func _calculate_size_and_position():
 				pos = try_pos
 				found = true
 				break
+	if not found and _submenu_mode and _cover_rect.size != Vector2.ZERO:
+		# Small-screen fallback: no candidate position fits, so cover the
+		# parent menu exactly (mobile drill-in style). The final clamp below
+		# keeps it fully on screen.
+		pos = _cover_rect.position
+		found = true
 	if not found:
 		# Last resort: use the first candidate and clamp it to the viewport
 		pos = positions[0]
-	
+
 	# Final safety clamp so the menu is never rendered off-screen
 	pos.x = clampf(pos.x, margin, viewport_size.x - width - margin)
 	pos.y = clampf(pos.y, margin, viewport_size.y - visible_height - margin)

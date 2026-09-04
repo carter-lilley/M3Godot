@@ -37,6 +37,10 @@ var _movement_timer: Timer = null
 var _parent_menu: M3Menu = null
 var _item_selected: bool = false
 
+## Rect this submenu should cover when no candidate position fits on screen
+## (small-screen fallback). Set by the parent menu before popup.
+var _cover_rect: Rect2 = Rect2()
+
 # Guard against reentrant submenu closure (focus events during dismiss can trigger reopen)
 var _is_closing_submenu: bool = false
 
@@ -178,6 +182,8 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 	_item_selected = false
 	_parent_menu = null
 	_dismissing = false
+	if not as_submenu:
+		_cover_rect = Rect2()
 	# Kill any in-flight dismiss fade: a submenu can be closed and re-popped in
 	# the same frame (hover off/on the summoner item), and a stale fade would
 	# otherwise finish later and hide the reopened menu.
@@ -186,16 +192,17 @@ func popup(anchor: Control, alignment: int = 0, auto_focus_first: bool = true, m
 		_dismiss_tween = null
 	
 	if as_submenu:
-		# Just add to tree and show; don't register in _active so parent isn't dismissed
-		var parent = M3Overlay.get_overlay_parent()
-		if parent and get_parent() == null:
-			parent.add_child(self)
+		# Just add to tree and show; don't register in _active so parent isn't dismissed.
+		# The layer sync from show_overlay() must happen here too: without it the
+		# submenu keeps the CanvasLayer default layer and renders behind the parent.
+		layer = overlay_layer
+		ensure_overlay_parent()
 		visible = true
 	else:
 		show_overlay()
 	
 	_ensure_renderer()
-	_renderer.popup(_items, anchor, menu_variant, alignment, auto_focus_first, min_width, multi_select, radio_group, as_submenu, silent_focus_first)
+	_renderer.popup(_items, anchor, menu_variant, alignment, auto_focus_first, min_width, multi_select, radio_group, as_submenu, silent_focus_first, _cover_rect)
 	# Disconnect old one-shot connections before reconnecting (prevents duplicates on reopen)
 	if _renderer.item_pressed.is_connected(_on_item_pressed):
 		_renderer.item_pressed.disconnect(_on_item_pressed)
@@ -341,8 +348,10 @@ func _on_submenu_requested(index: int):
 		item_node = _renderer._item_nodes[index]
 	
 	if item_node:
+		_submenu._cover_rect = get_menu_rect()
 		_submenu.popup(item_node, 0, true, 0, true)
 	else:
+		_submenu._cover_rect = get_menu_rect()
 		_submenu.popup(_renderer, 0, true, 0, true)
 	
 	# Tell parent renderer about the submenu's rect so it doesn't dismiss on clicks inside it

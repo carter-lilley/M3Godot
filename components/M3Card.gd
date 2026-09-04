@@ -1207,6 +1207,8 @@ func refresh_theme():
 func refresh_scale() -> void:
 	if not _ready_called:
 		return
+	if not enforce_min_height:
+		M3Debug.geom("m3_card", "refresh_scale: zeroing min height (enforce_min_height=false) min=%s size=%s text='%s'" % [custom_minimum_size, size, supporting_text])
 	custom_minimum_size.y = 0
 	_update_appearance()
 	if _text_content:
@@ -1302,6 +1304,7 @@ func _update_media_panel_size(force: bool = false) -> void:
 		card_w = size.x
 	if card_h <= 0.0:
 		card_h = size.y
+	M3Debug.geom("m3_card", "media_size: min=%s size=%s -> card=%.1fx%.1f text='%s'" % [custom_minimum_size, size, card_w, card_h, supporting_text])
 	
 	card_w = maxf(card_w, M3Units.dp(40.0))
 	card_h = maxf(card_h, M3Units.dp(40.0))

@@ -114,16 +114,23 @@ func _get_sheet_width(screen_width: float) -> float:
 func _position_sheet():
 	if not _sheet_container:
 		return
-	
+
 	var screen_size = _get_screen_size()
 	var height_px = M3Units.dp(peek_height)
 	var width_px = _get_sheet_width(screen_size.x)
+	# A sheet can never be larger than its viewport; transitional states (e.g.
+	# mid dual-screen swap) can otherwise stamp off-screen garbage geometry.
+	width_px = minf(width_px, screen_size.x)
+	height_px = minf(height_px, screen_size.y)
 	var x_pos = (screen_size.x - width_px) / 2.0
-	
+
 	# Position off-screen below initially
 	_sheet_container.position = Vector2(x_pos, screen_size.y)
 	_sheet_container.size = Vector2(width_px, height_px)
-	
+	M3Debug.geom("bottom_sheet", "position: screen=%s peek=%.1f scale=%.3f -> size=%s pos=%s" % [
+		screen_size, peek_height, M3Units.get_scale(), _sheet_container.size, _sheet_container.position])
+	_report_content_budget("position")
+
 	# Modal variant: rounded top corners
 	if sheet_variant == Variant.MODAL:
 		_update_corner_radii()
@@ -165,8 +172,25 @@ func _reposition_open():
 	var screen_size = _get_screen_size()
 	var height_px = M3Units.dp(peek_height)
 	var width_px = _get_sheet_width(screen_size.x)
+	width_px = minf(width_px, screen_size.x)
+	height_px = minf(height_px, screen_size.y)
 	_sheet_container.size = Vector2(width_px, height_px)
 	_sheet_container.position = Vector2((screen_size.x - width_px) / 2.0, screen_size.y - height_px)
+	M3Debug.geom("bottom_sheet", "reposition_open: screen=%s peek=%.1f scale=%.3f -> size=%s pos=%s" % [
+		screen_size, peek_height, M3Units.get_scale(), _sheet_container.size, _sheet_container.position])
+	_report_content_budget("reposition_open")
+
+## Debug assertion: the sheet shell is manually sized, so its content's
+## combined minimum must never exceed the stamped size. When it does, the
+## engine's set_size clamp (control.cpp:1529) grows the sheet past the
+## viewport — the failure mode this exists to surface early.
+func _report_content_budget(tag: String) -> void:
+	if not _sheet_container:
+		return
+	var min_size := _sheet_container.get_combined_minimum_size()
+	var stamped := _sheet_container.size
+	if min_size.x > stamped.x + 1.0 or min_size.y > stamped.y + 1.0:
+		M3Debug.geom("bottom_sheet", "CONTENT OVER BUDGET[%s]: content_min=%s stamped=%s" % [tag, min_size, stamped])
 
 func refresh_scale() -> void:
 	if not _ready_called:
@@ -200,16 +224,21 @@ func refresh_scale() -> void:
 func _animate_in():
 	if not _sheet_container:
 		return
-	
+
+	# Kill any in-flight tween (e.g. a slide-out still running from a quick
+	# dismiss -> re-summon race) so it can't fight or re-hide this sheet.
+	if _tween and _tween.is_valid():
+		_tween.kill()
+
 	var screen_size = _get_screen_size()
 	var height_px = _sheet_container.size.y
 	var start_y = screen_size.y
 	var end_y = screen_size.y - height_px
 	var width_px = _get_sheet_width(screen_size.x)
 	var x_pos = (screen_size.x - width_px) / 2.0
-	
+
 	_sheet_container.position = Vector2(x_pos, start_y)
-	
+
 	if _scrim and sheet_variant == Variant.MODAL:
 		_scrim.modulate.a = 0
 		_scrim.visible = true
@@ -217,7 +246,7 @@ func _animate_in():
 			_scrim_tween.kill()
 		_scrim_tween = create_tween()
 		_scrim_tween.tween_property(_scrim, "modulate:a", 1.0, 0.3)
-	
+
 	_tween = create_tween()
 	_tween.set_ease(Tween.EASE_OUT)
 	_tween.set_trans(Tween.TRANS_CUBIC)

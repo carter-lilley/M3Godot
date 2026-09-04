@@ -156,7 +156,9 @@ func _update_header():
 # ============================================
 
 func _get_screen_size() -> Vector2:
-	var viewport = get_viewport()
+	# Size against the resolver's frame of reference (DS-aware), never a raw
+	# get_viewport() guess: in dual-screen mode the active SubViewport.
+	var viewport = M3Overlay.get_sizing_viewport(get_viewport())
 	return viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
 
 func _animate_in():
@@ -207,7 +209,11 @@ func refresh_scale() -> void:
 		_headline_label.add_theme_font_size_override("font_size", M3Units.dp(20))
 	refresh_theme()
 
+var _dismissing: bool = false
+
 func show_overlay():
+	# Clear first so a dismiss-in-flight can't hide us mid re-summon.
+	_dismissing = false
 	var parent = M3Overlay.get_overlay_parent()
 	if parent and get_parent() == null:
 		parent.add_child(self)
@@ -215,8 +221,12 @@ func show_overlay():
 	_animate_in()
 
 func dismiss():
+	_dismissing = true
 	if _tween and _tween.is_valid():
 		_tween.kill()
 	_animate_out(func():
-		super.dismiss()
+		# A re-summon during the slide-out clears the flag; only hide if we
+		# are still actually dismissing.
+		if _dismissing:
+			super.dismiss()
 	)

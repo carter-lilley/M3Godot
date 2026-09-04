@@ -29,6 +29,20 @@ static func get_overlay_parent() -> Node:
 			return group
 	return tree.root if tree else null
 
+## Optional resolver for the viewport overlays should size against (in
+## dual-screen mode, the active SubViewport). Registered by the app's overlay
+## manager at startup so the M3 addon stays decoupled from app managers.
+static var sizing_viewport_resolver: Callable = Callable()
+
+## The single frame of reference for overlay sizing. Falls back to the given
+## viewport when no resolver is registered or it resolves to nothing.
+static func get_sizing_viewport(fallback: Viewport) -> Viewport:
+	if sizing_viewport_resolver.is_valid():
+		var resolved = sizing_viewport_resolver.call()
+		if resolved is Viewport and is_instance_valid(resolved):
+			return resolved
+	return fallback
+
 # ============================================
 # EXPORTS
 # ============================================
@@ -42,6 +56,10 @@ static func get_overlay_parent() -> Node:
 var _restore_focus_on_dismiss: bool = false
 var _summoner_focus: WeakRef = null
 var _focus_restore_fallback: Callable = Callable()
+# Set by set_focus_restore_target: an explicit target survives show_overlay()'s
+# auto-capture (which would otherwise clobber it — two-phase shows run prep
+# async, so capture happens long after the caller installed the target).
+var _explicit_restore_target: bool = false
 
 var participates_in_dismiss_stack: bool = true
 
@@ -60,8 +78,38 @@ func _init():
 
 func _ready():
 	visible = false
-	if get_viewport():
-		get_viewport().gui_focus_changed.connect(_on_overlay_focus_changed)
+	_reconnect_viewport_focus()
+
+var _focus_viewport: Viewport = null
+
+func _reconnect_viewport_focus() -> void:
+	"""Keep the gui_focus_changed connection on the overlay's CURRENT viewport;
+	DS-mode reparenting moves overlays between the root window and the
+	MainViewport SubViewport."""
+	var viewport := get_viewport()
+	if viewport == _focus_viewport:
+		return
+	if _focus_viewport and is_instance_valid(_focus_viewport):
+		if _focus_viewport.gui_focus_changed.is_connected(_on_overlay_focus_changed):
+			_focus_viewport.gui_focus_changed.disconnect(_on_overlay_focus_changed)
+	_focus_viewport = null
+	if viewport:
+		viewport.gui_focus_changed.connect(_on_overlay_focus_changed)
+		_focus_viewport = viewport
+
+## Re-resolve the overlay parent and reparent if stale. DS-mode toggles move
+## the valid overlay parent between the root viewport and MainViewport; without
+## this, persistent overlays stay stranded wherever they first landed.
+func ensure_overlay_parent() -> void:
+	var parent := get_overlay_parent()
+	if parent == null or get_parent() == parent:
+		return
+	var was_inside_tree := is_inside_tree()
+	if get_parent() != null:
+		get_parent().remove_child(self)
+	parent.add_child(self)
+	if was_inside_tree:
+		_reconnect_viewport_focus()
 
 func _on_overlay_focus_changed(control: Control) -> void:
 	if _suppress_focus_pullback:
@@ -129,12 +177,23 @@ static func _cleanup_stale_entries() -> void:
 static func get_active_overlay(type: String) -> M3Overlay:
 	return _get_active_node(type)
 
+## Return all currently active overlays (any type).
+static func get_active_overlays() -> Array[M3Overlay]:
+	_cleanup_stale_entries()
+	var result: Array[M3Overlay] = []
+	for type in _active.keys():
+		var overlay = _get_active_node(type)
+		if overlay != null:
+			result.append(overlay)
+	return result
+
 # ============================================
 # PUBLIC API
 # ============================================
 
 ## Show this overlay, dismissing any existing overlay of the same type.
 func show_overlay():
+	ensure_overlay_parent()
 	# Sync CanvasLayer.layer with overlay_layer (subclasses set overlay_layer after _init())
 	layer = overlay_layer
 	# Dismiss previous of same type
@@ -144,9 +203,19 @@ func show_overlay():
 	_set_active_node(overlay_type, self)
 	if participates_in_dismiss_stack and overlay_layer > _max_layer:
 		_max_layer = overlay_layer
-	if _restore_focus_on_dismiss:
+	if _restore_focus_on_dismiss and not _explicit_restore_target:
 		_summoner_focus = UIManager.capture_focus() if UIManager else null
 	visible = true
+
+## Two-phase show: run hidden prep (populate/resolve layout-affecting state),
+## then present. prep may be async; it completes before the first visible
+## frame, so the overlay is born with final content instead of reflowing
+## mid-animation. Overlays that intentionally stream content behind a loading
+## indicator (e.g. the shuffler config dialog) should NOT use this.
+func show_prepared(prep: Callable = Callable()) -> void:
+	if prep.is_valid():
+		await prep.call()
+	show_overlay()
 
 ## Dismiss this overlay and clean up.
 func dismiss():
@@ -163,6 +232,9 @@ func dismiss():
 	if _restore_focus_on_dismiss:
 		if UIManager:
 			UIManager.restore_focus(_summoner_focus, _focus_restore_fallback)
+	# A persistent overlay must not leak a stale target into its next show.
+	_summoner_focus = null
+	_explicit_restore_target = false
 	if not persistent:
 		queue_free()
 
@@ -170,6 +242,7 @@ func dismiss():
 ## automatically captured focus owner.
 func set_focus_restore_target(control: Control) -> void:
 	_summoner_focus = weakref(control) if control != null else null
+	_explicit_restore_target = control != null
 
 ## Set a fallback callable invoked when the captured focus owner can no longer
 ## receive focus (freed or hidden).
