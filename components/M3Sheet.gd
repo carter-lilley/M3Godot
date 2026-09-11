@@ -34,6 +34,14 @@ enum Variant { STANDARD, MODAL }
 		if _ready_called:
 			_update_header()
 
+@export var show_close_button_hint: bool = true:
+	set(value):
+		if value == show_close_button_hint:
+			return
+		show_close_button_hint = value
+		if _ready_called:
+			_update_header()
+
 @export var dismissible: bool = true
 
 # ============================================
@@ -46,6 +54,7 @@ var _header: HBoxContainer
 var _back_btn: M3IconButton
 var _headline_label: Label
 var _close_btn: M3IconButton
+var _close_hint: FontIcon
 var _content_slot: VBoxContainer
 
 var _ready_called: bool = false
@@ -97,6 +106,20 @@ func _build_header() -> HBoxContainer:
 	_headline_label.add_theme_font_size_override("font_size", M3Units.dp(20))
 	header.add_child(_headline_label)
 	
+	# Close button controller hint (B = ui_cancel dismisses the sheet)
+	_close_hint = FontIcon.new()
+	_close_hint.name = "CloseHint"
+	_close_hint.focus_mode = Control.FOCUS_NONE
+	_close_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_close_hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var hint_settings := FontIconSettings.new()
+	hint_settings.icon_font = "ControllerIcons"
+	hint_settings.icon_name = "gamepad-b"
+	hint_settings.icon_size = M3Units.dp(16)
+	hint_settings.icon_color = M3Theme.get_on_surface_variant()
+	_close_hint.icon_settings = hint_settings
+	header.add_child(_close_hint)
+
 	# Close button
 	_close_btn = M3IconButton.new()
 	_close_btn.icon_button_size = M3IconButton.IconSize.SMALL
@@ -150,6 +173,8 @@ func _update_text():
 func _update_header():
 	if _close_btn:
 		_close_btn.visible = show_close_button
+	if _close_hint:
+		_close_hint.visible = show_close_button and show_close_button_hint
 
 # ============================================
 # ANIMATION

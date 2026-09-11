@@ -91,11 +91,27 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		start_icon_name = value
 		_update_icons()
 
+@export_enum("MaterialIcons", "Emojis", "ControllerIcons")
+var start_icon_font: String = "MaterialIcons":
+	set(value):
+		if value == start_icon_font:
+			return
+		start_icon_font = value
+		_update_icons()
+
 @export var end_icon_name: String = "":
 	set(value):
 		if value == end_icon_name:
 			return
 		end_icon_name = value
+		_update_icons()
+
+@export_enum("MaterialIcons", "Emojis", "ControllerIcons")
+var end_icon_font: String = "MaterialIcons":
+	set(value):
+		if value == end_icon_font:
+			return
+		end_icon_font = value
 		_update_icons()
 
 @export var range_value: float = 0.0:
@@ -514,6 +530,7 @@ func _update_icons():
 	
 	if icon_size_dp > 0 and start_icon_name:
 		_start_icon.visible = true
+		_start_icon.icon_settings.icon_font = start_icon_font
 		_start_icon.icon_settings.icon_name = start_icon_name
 		_start_icon.icon_settings.icon_size = icon_size_px
 		_start_icon.icon_settings.outline_color = Color.TRANSPARENT
@@ -524,6 +541,7 @@ func _update_icons():
 	
 	if icon_size_dp > 0 and end_icon_name:
 		_end_icon.visible = true
+		_end_icon.icon_settings.icon_font = end_icon_font
 		_end_icon.icon_settings.icon_name = end_icon_name
 		_end_icon.icon_settings.icon_size = icon_size_px
 		_end_icon.icon_settings.outline_color = Color.TRANSPARENT
