@@ -107,6 +107,38 @@ const SIZE_SPECS = {
 		_update_icon()
 		# _update_theme() is called by _update_icon() if visibility changes
 
+@export_enum("MaterialIcons", "Emojis", "ControllerIcons")
+var icon_font: String = "MaterialIcons":
+	set(value):
+		if value == icon_font:
+			return
+		icon_font = value
+		_update_icon()
+
+@export var badge_icon_name: String = "":
+	set(value):
+		if value == badge_icon_name:
+			return
+		badge_icon_name = value
+		_update_badge()
+
+@export_enum("MaterialIcons", "Emojis", "ControllerIcons")
+var badge_icon_font: String = "MaterialIcons":
+	set(value):
+		if value == badge_icon_font:
+			return
+		badge_icon_font = value
+		_update_badge()
+
+enum BadgeCorner { BOTTOM_RIGHT, BOTTOM_LEFT }
+
+@export var badge_corner: BadgeCorner = BadgeCorner.BOTTOM_RIGHT:
+	set(value):
+		if value == badge_corner:
+			return
+		badge_corner = value
+		_update_badge_position()
+
 @export var m3_tooltip_text: String = ""
 @export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
@@ -140,6 +172,11 @@ var _cached_colors_selected: Dictionary = {}
 var _cached_pad_h_px: int = 0
 var _cached_icon_size_px: int = 0
 
+# Badge: small circle overlapping the bottom-right corner, M3 badge pattern
+const BADGE_SIZE_DP := 22
+var _badge: M3Badge
+var _cached_badge_size_px: int = 0
+
 ## When false, M3Button will not auto-set size_flags_vertical or custom_minimum_size.y.
 ## Useful for subclasses (e.g., M3NavigationDestination) whose parent container controls sizing.
 var auto_size_vertical: bool = true
@@ -152,6 +189,8 @@ func _ready():
 	_initialize_caches()
 	_create_icon()
 	_update_icon()  # Set icon visibility first
+	_create_badge()
+	_update_badge()
 	if auto_size_vertical:
 		size_flags_vertical = 0  # Don't expand vertically in containers
 	_update_size()
@@ -301,6 +340,37 @@ func _create_icon():
 	_icon_node.icon_settings.shadow_color = Color.TRANSPARENT
 	add_child(_icon_node)
 
+func _create_badge():
+	if is_instance_valid(_badge):
+		return
+	_cached_badge_size_px = max(1, M3Units.dp(BADGE_SIZE_DP))
+	_badge = M3Badge.new()
+	_badge.name = "Badge"
+	_badge.z_index = 2
+	_badge.custom_minimum_size = Vector2(_cached_badge_size_px, _cached_badge_size_px)
+	_badge.size = _badge.custom_minimum_size
+	add_child(_badge)
+
+func _update_badge():
+	if not _badge:
+		return
+	_badge.icon_font = badge_icon_font
+	_badge.icon_name = badge_icon_name
+	if _badge.visible:
+		_update_badge_position()
+
+func _update_badge_position():
+	if not _badge or not _badge.visible:
+		return
+	# Straddle the corner, mostly inside the button bounds
+	var badge_x: float
+	match badge_corner:
+		BadgeCorner.BOTTOM_LEFT:
+			badge_x = -_cached_badge_size_px * 0.3
+		_:
+			badge_x = size.x - _cached_badge_size_px * 0.7
+	_badge.position = Vector2(badge_x, size.y - _cached_badge_size_px * 0.7)
+
 func _get_size_spec() -> Dictionary:
 	return SIZE_SPECS[button_size]
 
@@ -325,6 +395,7 @@ func _update_icon():
 	
 	var was_visible = _icon_node.visible
 	if icon_name:
+		_icon_node.icon_settings.icon_font = icon_font
 		_icon_node.icon_settings.icon_name = icon_name
 		_icon_node.visible = true
 	else:
@@ -640,9 +711,17 @@ func refresh_theme():
 	"""Refresh theme when dark mode changes. Called by parent."""
 	_cached_colors_hash = -1
 	_update_theme()
+	if _badge:
+		_badge.refresh()
 
 func refresh_scale() -> void:
 	_update_size()
+	if _badge:
+		_cached_badge_size_px = max(1, M3Units.dp(BADGE_SIZE_DP))
+		_badge.custom_minimum_size = Vector2(_cached_badge_size_px, _cached_badge_size_px)
+		_badge.size = _badge.custom_minimum_size
+		_badge.refresh()
+		_update_badge_position()
 	refresh_theme()
 
 func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {}):
@@ -672,6 +751,7 @@ func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {
 func _notification(what: int):
 	if what == NOTIFICATION_RESIZED:
 		_update_icon_position()
+		_update_badge_position()
 		pivot_offset = size / 2.0
 	elif what == NOTIFICATION_TRANSFORM_CHANGED:
 		# FocusSubManager enables transform notifications while this button is

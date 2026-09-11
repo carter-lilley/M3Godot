@@ -417,7 +417,7 @@ static var _generated_theme_cache: Dictionary = {}
 const MAX_GENERATED_THEMES: int = 4
 
 static func generate_theme() -> Theme:
-	var signature := str(is_dark_mode) + "|" + PRIMARY_LIGHT.to_html() + "|" + PRIMARY_DARK.to_html()
+	var signature := str(is_dark_mode) + "|" + PRIMARY_LIGHT.to_html() + "|" + PRIMARY_DARK.to_html() + "|" + str(M3Units.get_scale())
 	if _generated_theme_cache.has(signature):
 		return _generated_theme_cache[signature]
 
@@ -442,7 +442,7 @@ static func generate_theme() -> Theme:
 	# ========================================
 	t.set_color("font_color", "Label", on_surf)
 	t.set_font("font", "Label", f["regular"])
-	t.set_font_size("font_size", "Label", TYPE_BODY_LARGE)
+	t.set_font_size("font_size", "Label", M3Units.dpi(TYPE_BODY_LARGE))
 	
 	# ========================================
 	# RICHTEXTLABEL
@@ -450,7 +450,7 @@ static func generate_theme() -> Theme:
 	t.set_color("default_color", "RichTextLabel", on_surf)
 	t.set_font("normal_font", "RichTextLabel", f["regular"])
 	t.set_font("bold_font", "RichTextLabel", f["bold"])
-	t.set_font_size("normal_font_size", "RichTextLabel", TYPE_BODY_LARGE)
+	t.set_font_size("normal_font_size", "RichTextLabel", M3Units.dpi(TYPE_BODY_LARGE))
 	
 	# ========================================
 	# BUTTON - M3 Filled Button
@@ -474,7 +474,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_focus_color", "Button", on_prim)
 	
 	t.set_font("font", "Button", f["medium"])
-	t.set_font_size("font_size", "Button", TYPE_LABEL_LARGE)
+	t.set_font_size("font_size", "Button", M3Units.dpi(TYPE_LABEL_LARGE))
 	
 	# ========================================
 	# CHECKBUTTON (Toggle/Switch)
@@ -489,7 +489,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_disabled_color", "CheckButton", disabled_color(on_surf))
 	
 	t.set_font("font", "CheckButton", f["medium"])
-	t.set_font_size("font_size", "CheckButton", TYPE_LABEL_LARGE)
+	t.set_font_size("font_size", "CheckButton", M3Units.dpi(TYPE_LABEL_LARGE))
 	
 	# ========================================
 	# CHECKBOX
@@ -504,7 +504,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_disabled_color", "CheckBox", disabled_color(on_surf))
 	
 	t.set_font("font", "CheckBox", f["medium"])
-	t.set_font_size("font_size", "CheckBox", TYPE_LABEL_LARGE)
+	t.set_font_size("font_size", "CheckBox", M3Units.dpi(TYPE_LABEL_LARGE))
 	
 	# ========================================
 	# LINE EDIT - M3 Outlined Text Field
@@ -523,7 +523,7 @@ static func generate_theme() -> Theme:
 	t.set_color("selection_color", "LineEdit", prim_cont)
 	
 	t.set_font("font", "LineEdit", f["regular"])
-	t.set_font_size("font_size", "LineEdit", TYPE_BODY_LARGE)
+	t.set_font_size("font_size", "LineEdit", M3Units.dpi(TYPE_BODY_LARGE))
 	
 	# ========================================
 	# TEXT EDIT
@@ -542,7 +542,7 @@ static func generate_theme() -> Theme:
 	t.set_color("selection_color", "TextEdit", prim_cont)
 	
 	t.set_font("font", "TextEdit", f["regular"])
-	t.set_font_size("font_size", "TextEdit", TYPE_BODY_MEDIUM)
+	t.set_font_size("font_size", "TextEdit", M3Units.dpi(TYPE_BODY_MEDIUM))
 	
 	# ========================================
 	# SLIDER - M3 Slider
@@ -617,7 +617,7 @@ static func generate_theme() -> Theme:
 	
 	t.set_color("font_color", "ProgressBar", on_surf)
 	t.set_font("font", "ProgressBar", f["medium"])
-	t.set_font_size("font_size", "ProgressBar", TYPE_LABEL_MEDIUM)
+	t.set_font_size("font_size", "ProgressBar", M3Units.dpi(TYPE_LABEL_MEDIUM))
 	
 	# ========================================
 	# SPIN BOX
@@ -625,7 +625,7 @@ static func generate_theme() -> Theme:
 	t.set_stylebox("normal", "SpinBox", make_flat(surf, RADIUS_SMALL, 1, outl, 12, 10))
 	t.set_color("font_color", "SpinBox", on_surf)
 	t.set_font("font", "SpinBox", f["regular"])
-	t.set_font_size("font_size", "SpinBox", TYPE_BODY_LARGE)
+	t.set_font_size("font_size", "SpinBox", M3Units.dpi(TYPE_BODY_LARGE))
 	
 	# ========================================
 	# TAB CONTAINER - M3 Primary Tabs (no jump)
@@ -660,7 +660,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_disabled_color", "TabContainer", disabled_color(on_surf))
 	
 	t.set_font("font", "TabContainer", f["medium"])
-	t.set_font_size("font_size", "TabContainer", TYPE_TITLE_SMALL)
+	t.set_font_size("font_size", "TabContainer", M3Units.dpi(TYPE_TITLE_SMALL))
 	
 	# ========================================
 	# SCROLLBARS (M3 compliant)
@@ -732,7 +732,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_disabled_color", "PopupMenu", disabled_color(on_surf))
 	
 	t.set_font("font", "PopupMenu", f["regular"])
-	t.set_font_size("font_size", "PopupMenu", TYPE_BODY_MEDIUM)
+	t.set_font_size("font_size", "PopupMenu", M3Units.dpi(TYPE_BODY_MEDIUM))
 	
 	# ========================================
 	# PANEL (background)
@@ -764,7 +764,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_disabled_color", "OptionButton", disabled_color(on_surf))
 	
 	t.set_font("font", "OptionButton", f["regular"])
-	t.set_font_size("font_size", "OptionButton", TYPE_BODY_LARGE)
+	t.set_font_size("font_size", "OptionButton", M3Units.dpi(TYPE_BODY_LARGE))
 	
 	# ========================================
 	# MENU BUTTON
@@ -778,7 +778,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_pressed_color", "MenuButton", on_prim_cont)
 	
 	t.set_font("font", "MenuButton", f["medium"])
-	t.set_font_size("font_size", "MenuButton", TYPE_LABEL_LARGE)
+	t.set_font_size("font_size", "MenuButton", M3Units.dpi(TYPE_LABEL_LARGE))
 	
 	# ========================================
 	# LINK BUTTON
@@ -789,7 +789,7 @@ static func generate_theme() -> Theme:
 	t.set_color("font_disabled_color", "LinkButton", disabled_color(on_surf))
 	
 	t.set_font("font", "LinkButton", f["medium"])
-	t.set_font_size("font_size", "LinkButton", TYPE_LABEL_LARGE)
+	t.set_font_size("font_size", "LinkButton", M3Units.dpi(TYPE_LABEL_LARGE))
 	
 	# ========================================
 	# SEPARATORS

@@ -12,7 +12,7 @@ const BASE_HEIGHT := 1080.0
 const BASE_DPI := 160.0
 const DEFAULT_DPI := 96.0
 const MIN_SCALE := 1.0
-const MAX_SCALE := 4.0
+const MAX_SCALE := 5.0
 
 static func _get_display_manager() -> Node:
 	var main_loop := Engine.get_main_loop()
@@ -44,7 +44,7 @@ static func get_scale() -> float:
 		os_scale = 1.0
 
 	var screen_size := DisplayServer.screen_get_size(screen)
-	var resolution_scale := pow(screen_size.y / BASE_HEIGHT, 0.85)
+	var resolution_scale := pow(screen_size.y / BASE_HEIGHT, 1.0)
 
 	var dpi := DisplayServer.screen_get_dpi()
 	if dpi <= 0:

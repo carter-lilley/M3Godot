@@ -268,12 +268,16 @@ static func _recalculate_max_layer() -> void:
 			_max_layer = overlay.overlay_layer
 
 # Return the topmost active interactive overlay, or null if none.
+# Focus-neutral overlays (snackbars: participates_in_dismiss_stack = false)
+# never take or pull focus by design, so they must not count here — otherwise
+# a visible snackbar (layer 1100) suppresses dialogs' focus pull-back and the
+# grid's post-rebuild focus restore.
 static func _get_topmost_overlay() -> M3Overlay:
 	_cleanup_stale_entries()
 	var topmost: M3Overlay = null
 	for type in _active.keys():
 		var overlay = _get_active_node(type)
-		if overlay != null and overlay.visible and (topmost == null or overlay.overlay_layer > topmost.overlay_layer):
+		if overlay != null and overlay.visible and overlay.participates_in_dismiss_stack and (topmost == null or overlay.overlay_layer > topmost.overlay_layer):
 			topmost = overlay
 	return topmost
 
