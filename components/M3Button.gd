@@ -139,8 +139,38 @@ enum BadgeCorner { BOTTOM_RIGHT, BOTTOM_LEFT }
 		badge_corner = value
 		_update_badge_position()
 
+enum BadgeAnchor { BUTTON, ICON }
+
+## BUTTON anchors the badge to the button's corner; ICON anchors it to the
+## icon glyph's rect (falls back to BUTTON when no icon is visible).
+@export var badge_anchor: BadgeAnchor = BadgeAnchor.BUTTON:
+	set(value):
+		if value == badge_anchor:
+			return
+		badge_anchor = value
+		_update_badge_position()
+
 @export var m3_tooltip_text: String = ""
 @export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
+
+## Overrides the size-spec font size (in px) when > 0. Used by the on-screen
+## keyboard, whose keys size to their container rather than a fixed spec.
+@export var custom_font_size: int = 0:
+	set(value):
+		if value == custom_font_size:
+			return
+		custom_font_size = value
+		_update_theme()
+
+## When true, the focus stylebox draws a visible border and hover-tinted bg.
+## Use where the global FocusSubManager ring renders behind the control
+## (e.g. the on-screen keyboard, which sits above the ring's canvas layer).
+@export var show_focus_border: bool = false:
+	set(value):
+		if value == show_focus_border:
+			return
+		show_focus_border = value
+		_update_theme()
 
 # ============================================
 # INTERNAL
@@ -362,14 +392,31 @@ func _update_badge():
 func _update_badge_position():
 	if not _badge or not _badge.visible:
 		return
-	# Straddle the corner, mostly inside the button bounds
+
+	# Anchor rect: the icon glyph when requested and visible, else the button
+	var anchor_origin := Vector2.ZERO
+	var anchor_size := size
+	var icon_anchored := badge_anchor == BadgeAnchor.ICON \
+		and _icon_node and _icon_node.visible and _cached_icon_size_px > 0
+	if icon_anchored:
+		anchor_origin = _icon_node.position
+		anchor_size = Vector2(_cached_icon_size_px, _cached_icon_size_px)
+
+	# Scale the badge to the anchor; a full-size badge would dwarf an icon
+	var badge_px: float = _cached_badge_size_px
+	if icon_anchored:
+		badge_px = clamp(anchor_size.x * 0.55, M3Units.dp(12), M3Units.dp(22))
+		_badge.size = Vector2(badge_px, badge_px)
+		_badge.refresh()
+
+	# Straddle the corner, mostly inside the anchor bounds
 	var badge_x: float
 	match badge_corner:
 		BadgeCorner.BOTTOM_LEFT:
-			badge_x = -_cached_badge_size_px * 0.3
+			badge_x = anchor_origin.x - badge_px * 0.3
 		_:
-			badge_x = size.x - _cached_badge_size_px * 0.7
-	_badge.position = Vector2(badge_x, size.y - _cached_badge_size_px * 0.7)
+			badge_x = anchor_origin.x + anchor_size.x - badge_px * 0.7
+	_badge.position = Vector2(badge_x, anchor_origin.y + anchor_size.y - badge_px * 0.7)
 
 func _get_size_spec() -> Dictionary:
 	return SIZE_SPECS[button_size]
@@ -517,7 +564,7 @@ func _update_theme():
 	var spec = _get_size_spec()
 	var radius = _get_radius()
 	var pad_h = M3Units.dp(spec["padding_h"])
-	var font_size = M3Units.dp(spec["font_size"])
+	var font_size = custom_font_size if custom_font_size > 0 else M3Units.dp(spec["font_size"])
 	
 	# Determine colors based on variant and toggle state
 	var colors: Dictionary
@@ -574,8 +621,15 @@ func _update_theme():
 	# Disabled state
 	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, icon_gap, has_icon, border_w, border_c)
 	
-	# Focus state (bg only — the ring is drawn globally by FocusSubManager)
-	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, icon_gap, has_icon, 0, focus_border)
+	# Focus state (bg only — the ring is drawn globally by FocusSubManager,
+	# unless show_focus_border opts into a local border for controls that
+	# render above the ring's canvas layer)
+	var focus_bg: Color = display_focus
+	var focus_border_w := 0
+	if show_focus_border:
+		focus_bg = hover_bg if not _menu_active else display_focus
+		focus_border_w = M3Units.dpi(2)
+	_configure_stylebox(_cached_style_focus, focus_bg, radius, pad_h, icon_gap, has_icon, focus_border_w, focus_border)
 	
 	# Hover pressed state (checked hover for toggles)
 	if button_type == Type.TOGGLE:
