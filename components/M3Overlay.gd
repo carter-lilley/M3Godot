@@ -51,6 +51,12 @@ static func get_sizing_viewport(fallback: Viewport) -> Viewport:
 @export var overlay_layer: int = 80
 @export var persistent: bool = false
 
+## When true, DS-mode swaps reparent this overlay instead of dismissing it
+## (overrides the overlay manager's per-type DISMISS policy). Only safe for
+## persistent overlays whose geometry is viewport-stamped and re-applied from
+## on_viewport_settled() — pending state survives the swap untouched.
+var survive_ds_swap: bool = false
+
 # When true, capture the current focus owner when the overlay is shown and
 # restore it when the overlay is dismissed.
 var _restore_focus_on_dismiss: bool = false

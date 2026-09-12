@@ -66,14 +66,17 @@ const FULLSCREEN_ACTIONS_HEIGHT := 64.0
 @export var fill_viewport_height: bool = false
 @export var disable_default_action: bool = false
 @export var dialog_max_width: float = BASIC_MAX_WIDTH
-## When true, the dialog's computed size is a hard cap: any layout pass that
-## re-sizes the container from content minimum size is overridden, and content
-## is clipped to the dialog interior. Use for dialogs whose content can be
-## taller than the viewport (content should scroll, not grow the dialog).
-@export var fixed_size: bool = false:
-	set(value):
-		fixed_size = value
-		_update_fixed_size_enforcement()
+## Sizing contract. Stamped mode (fixed_size or fill_viewport_height): the
+## dialog's size is a pure function of the viewport, re-applied per stamp, and
+## content must scroll inside it — content never resizes the dialog.
+## Content-sized mode (default): content height is measured analytically once
+## at show time (pure function of stamped width, dp scale, and text), then
+## only re-clamped against new viewport sizes.
+## Both modes: the chrome firewall (_ensure_chrome_firewall) severs min-size
+## propagation so the engine's set_size clamp (control.cpp:1529) can never
+## grow the dialog past the stamp; _report_content_budget tripwires stamped
+## mode if page content still exceeds it.
+@export var fixed_size: bool = false
 
 # ============================================
 # SIGNALS
@@ -118,9 +121,15 @@ var _anim_tween: Tween = null
 var _dismissing: bool = false
 var _scrim_alpha: float = 0.32
 
-# Fixed-size enforcement: last computed BASIC dialog size, re-applied whenever
-# content minimum size pressure tries to grow the container past it.
+# Last stamped BASIC dialog size. Stamped mode derives it from the viewport;
+# content-sized mode derives it from _content_height_px (measured once).
 var _fixed_size_px: Vector2 = Vector2.ZERO
+# Measured content height, content-sized mode only. Set once; 0 = unmeasured.
+var _content_height_px: float = 0.0
+# Min-size firewall wrapping all chrome (see _ensure_chrome_firewall).
+var _chrome_firewall: Control = null
+# Viewport whose size_changed drives re-stamps; tracked across DS reparents.
+var _size_viewport: Viewport = null
 var _cached_bg_sb: StyleBoxFlat = null
 var _cached_top_bar_sb: StyleBoxFlat = null
 var _cached_bottom_actions_sb: StyleBoxFlat = null
@@ -153,12 +162,6 @@ func show_overlay():
 	var parent = M3Overlay.get_overlay_parent()
 	if parent and get_parent() == null:
 		parent.add_child(self)
-	# Defer positioning so dialogs with async-built content (e.g. SettingsDialog)
-	# are measured after their children have finished laying out.
-	_deferred_position_and_show()
-
-func _deferred_position_and_show():
-	await get_tree().process_frame
 	_position_dialog()
 	_dismissing = false
 	super.show_overlay()
@@ -229,17 +232,38 @@ func _ready():
 	_update_text()
 	_update_hero_icon()
 	_apply_chrome_scale()
-	var viewport := get_viewport()
-	if viewport and not viewport.size_changed.is_connected(_apply_chrome_scale):
-		viewport.size_changed.connect(_apply_chrome_scale)
 
 	for btn in _actions:
 		if btn.get_parent() == null and _actions_container:
 			_actions_container.add_child(btn)
-	
+
 	if not disable_default_action:
 		_add_default_action()
 	_ready_called = true
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_ENTER_TREE:
+		_track_size_viewport()
+
+## Keep the size_changed connection on the dialog's CURRENT viewport; DS-mode
+## reparenting moves dialogs between the root window and the MainViewport
+## SubViewport, and the old connection would die with the old viewport.
+func _track_size_viewport() -> void:
+	var viewport := get_viewport()
+	if viewport == _size_viewport:
+		return
+	if _size_viewport and is_instance_valid(_size_viewport):
+		if _size_viewport.size_changed.is_connected(_on_host_viewport_size_changed):
+			_size_viewport.size_changed.disconnect(_on_host_viewport_size_changed)
+	_size_viewport = viewport
+	if viewport and not viewport.size_changed.is_connected(_on_host_viewport_size_changed):
+		viewport.size_changed.connect(_on_host_viewport_size_changed)
+
+func _on_host_viewport_size_changed() -> void:
+	_apply_chrome_scale()
+	# Re-stamp against the new viewport. Never re-measures content.
+	if visible and dialog_variant == Variant.BASIC and _fixed_size_px != Vector2.ZERO:
+		_position_dialog()
 
 func _focus_first() -> void:
 	_focus_first_action()
@@ -266,18 +290,34 @@ func _build_layout():
 	_dialog_container.size_flags_horizontal = Control.SIZE_FILL
 	_dialog_container.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_dialog_wrapper.add_child(_dialog_container)
-	
+
+	_ensure_chrome_firewall()
+
 	if dialog_variant == Variant.BASIC:
 		_build_basic_layout()
 	else:
 		_build_fullscreen_layout()
 
+## Min-size firewall: a plain (non-Container) Control with a (0,0) minimum
+## between the PanelContainer and all dialog chrome. Non-Container Controls do
+## not propagate their children's combined minimum size, so no content — e.g.
+## an autowrap label whose min height is garbage until layout assigns it a
+## width — can ever inflate the dialog's minimum past the stamp (the set_size
+## clamp, control.cpp:1529). The stamp is the only source of dialog size.
+func _ensure_chrome_firewall() -> void:
+	if is_instance_valid(_chrome_firewall):
+		return
+	_chrome_firewall = Control.new()
+	_chrome_firewall.name = "ChromeFirewall"
+	_chrome_firewall.custom_minimum_size = Vector2(0, 0)
+	_chrome_firewall.clip_contents = true
+	_dialog_container.add_child(_chrome_firewall)
+
 func _build_basic_layout():
 	_vbox = VBoxContainer.new()
 	_vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
-	_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_dialog_container.add_child(_vbox)
+	_vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_chrome_firewall.add_child(_vbox)
 	
 	_vbox.add_theme_constant_override("separation", 0)
 	
@@ -347,10 +387,13 @@ func _build_fullscreen_layout():
 	bg_panel.name = "FullscreenBackground"
 	bg_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dialog_container.add_child(bg_panel)
-	
+	# The firewall is created before this runs, so the background would land on
+	# top of it — hiding plain Labels and eating every click. Keep it beneath.
+	_dialog_container.move_child(bg_panel, 0)
+
 	_fullscreen_root = VBoxContainer.new()
 	_fullscreen_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_dialog_container.add_child(_fullscreen_root)
+	_chrome_firewall.add_child(_fullscreen_root)
 	
 	_top_bar = Panel.new()
 	_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
@@ -446,6 +489,8 @@ func _rebuild_layout():
 	_bottom_actions = null
 	_title_body_spacer = null
 	_body_content_spacer = null
+	_chrome_firewall = null
+	_ensure_chrome_firewall()
 	
 	if dialog_variant == Variant.BASIC:
 		_build_basic_layout()
@@ -495,9 +540,10 @@ func _apply_chrome_scale() -> void:
 		_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BAR_HEIGHT if small else FULLSCREEN_ACTIONS_HEIGHT))
 
 func _is_small_screen() -> bool:
-	if not get_viewport():
+	var viewport := M3Overlay.get_sizing_viewport(get_viewport())
+	if not viewport:
 		return false
-	var viewport_size = get_viewport().get_visible_rect().size
+	var viewport_size = viewport.get_visible_rect().size
 	return viewport_size.x < M3Units.dp(600) or viewport_size.y < M3Units.dp(700)
 
 func _focus_first_action() -> void:
@@ -509,7 +555,7 @@ func _focus_first_action() -> void:
 			return
 
 func _get_usable_rect() -> Rect2:
-	var viewport = get_viewport()
+	var viewport = M3Overlay.get_sizing_viewport(get_viewport())
 	if not viewport:
 		return Rect2(Vector2.ZERO, Vector2(1920, 1080))
 	var viewport_rect = viewport.get_visible_rect()
@@ -533,82 +579,172 @@ func _get_usable_rect() -> Rect2:
 			return intersection
 	return viewport_rect
 
+func _is_content_sized() -> bool:
+	return dialog_variant == Variant.BASIC and not fixed_size and not fill_viewport_height
+
 func _position_dialog():
 	var usable_rect = _get_usable_rect()
 	var viewport_pos = usable_rect.position
 	var viewport_size = usable_rect.size
-	
+
 	if dialog_variant == Variant.BASIC:
 		var margin_per_side = M3Units.dp(24)
 		var max_w = M3Units.dp(dialog_max_width)
 		var max_h = M3Units.dp(BASIC_MAX_HEIGHT)
 		var min_h = M3Units.dp(BASIC_MIN_HEIGHT)
 		var dialog_width = min(max_w, viewport_size.x - margin_per_side * 2)
-		
-		_dialog_container.set_anchors_preset(Control.PRESET_TOP_WIDE, false)
-		_dialog_container.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		_dialog_container.custom_minimum_size = Vector2(dialog_width, 0)
-		await get_tree().process_frame
-		var dialog_min_size := _dialog_container.get_combined_minimum_size()
-		var content_height := dialog_min_size.y
 		var max_available_height := (viewport_size.y - margin_per_side * 2) as float
+
 		var dialog_height: float
-		if fill_viewport_height:
-			dialog_height = clamp(max_available_height, min_h, max_h)
-		else:
-			dialog_height = clamp(content_height, min_h, max_h)
+		if _is_content_sized():
+			# Content-sized mode: analytic one-shot measure (pure function of
+			# stamped width, dp scale, and text — no frames, no layout state),
+			# then only re-clamp the stored height against new viewport sizes.
+			if _content_height_px <= 0.0:
+				_content_height_px = _measure_content_height(dialog_width)
+			dialog_height = clamp(_content_height_px, min_h, max_h)
 			dialog_height = min(dialog_height, max_available_height)
-		
-		# Fix the container to the measured dialog size and center it in the wrapper.
-		# The wrapper is left un-clipped so the rounded panel corners and shadow are
-		# not cut off. The stylebox's content margin already keeps children inside
-		# the rounded shape, so shape clipping is unnecessary.
-		_dialog_container.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
-		_dialog_container.position = Vector2.ZERO
-		_dialog_container.custom_minimum_size = Vector2(dialog_width, dialog_height)
-		_dialog_container.size = Vector2(dialog_width, dialog_height)
-		_dialog_wrapper.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
-		_dialog_wrapper.size = Vector2(dialog_width, dialog_height)
-		_dialog_wrapper.position = viewport_pos + (viewport_size - Vector2(dialog_width, dialog_height)) / 2.0
-		_fixed_size_px = Vector2(dialog_width, dialog_height)
-		_update_fixed_size_enforcement()
+		else:
+			# Stamped mode: height is a pure function of the viewport. Content
+			# scrolls inside; it never resizes the dialog.
+			dialog_height = clamp(max_available_height, min_h, max_h)
+
+		_stamp_dialog(Vector2(dialog_width, dialog_height), viewport_pos, viewport_size)
 	else:
 		# Fullscreen: wrapper fills the full viewport (including any cutout areas).
-		var full_viewport_size = get_viewport().get_visible_rect().size if get_viewport() else Vector2(1920, 1080)
+		var sizing := M3Overlay.get_sizing_viewport(get_viewport())
+		var full_viewport_size = sizing.get_visible_rect().size if sizing else Vector2(1920, 1080)
 		_dialog_wrapper.set_anchors_preset(Control.PRESET_FULL_RECT)
 		_dialog_wrapper.position = Vector2.ZERO
 		_dialog_wrapper.size = full_viewport_size
 
+## Pin the container to the stamped size and center it in the wrapper. The
+## wrapper is left un-clipped so the rounded panel corners and shadow are not
+## cut off; the stylebox's content margin keeps children inside the shape.
+func _stamp_dialog(size_px: Vector2, viewport_pos: Vector2, viewport_size: Vector2) -> void:
+	_dialog_container.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
+	_dialog_container.position = Vector2.ZERO
+	_dialog_container.custom_minimum_size = size_px
+	_dialog_container.size = size_px
+	_dialog_wrapper.set_anchors_preset(Control.PRESET_TOP_LEFT, false)
+	_dialog_wrapper.size = size_px
+	_dialog_wrapper.position = viewport_pos + (viewport_size - size_px) / 2.0
+	_fixed_size_px = size_px
+	_report_content_budget("stamp")
 
-func _update_fixed_size_enforcement() -> void:
-	if not is_instance_valid(_dialog_container) or not is_instance_valid(_vbox):
-		return
-	if fixed_size:
-		# Clip the inner content column (not the container itself, so the panel's
-		# shadow and rounded stylebox still render outside its rect).
-		_vbox.clip_contents = true
-		if not _dialog_container.minimum_size_changed.is_connected(_enforce_fixed_size):
-			_dialog_container.minimum_size_changed.connect(_enforce_fixed_size)
-		_enforce_fixed_size.call_deferred()
+# ============================================
+# CONTENT MEASUREMENT (content-sized mode)
+# ============================================
+
+## One-shot analytic measure: every height contributor is a pure function of
+## known inputs (stamped width, dp scale, text). Chrome rows are constants,
+## wrapped text is shaped synchronously by TextServer (the same engine Label
+## renders with), and fixed-spec controls report layout-independent minimums.
+## No frames, no tree layout state — same inputs always give the same height.
+func _measure_content_height(dialog_width: float) -> float:
+	var sb := _dialog_container.get_theme_stylebox("panel")
+	var ml: float = sb.get_margin(SIDE_LEFT) if sb else 0.0
+	var mt: float = sb.get_margin(SIDE_TOP) if sb else 0.0
+	var mr: float = sb.get_margin(SIDE_RIGHT) if sb else 0.0
+	var mb: float = sb.get_margin(SIDE_BOTTOM) if sb else 0.0
+	return _measure_min_height(_vbox, dialog_width - ml - mr) + mt + mb
+
+func _measure_min_height(node: Control, width: float) -> float:
+	if not node.visible:
+		return 0.0
+	var h := 0.0
+	if node is Label:
+		var label := node as Label
+		if label.autowrap_mode == TextServer.AUTOWRAP_OFF or width <= 0.0:
+			h = label.get_combined_minimum_size().y
+		else:
+			h = _measure_wrapped_label(label, width)
+	elif node is VBoxContainer:
+		var sep := float(node.get_theme_constant("separation"))
+		var count := 0
+		for child in node.get_children():
+			if child is Control and child.visible:
+				h += _measure_min_height(child, width)
+				count += 1
+		if count > 1:
+			h += sep * (count - 1)
+	elif node is HBoxContainer:
+		# Slot HBoxes hold fixed-spec rows; a wrapped label here would need its
+		# share of the width, which only layout knows — the tripwire will flag it.
+		for child in node.get_children():
+			if child is Control and child.visible:
+				h = maxf(h, _measure_min_height(child, width))
+	elif node is MarginContainer:
+		var l := float(node.get_theme_constant("margin_left"))
+		var t := float(node.get_theme_constant("margin_top"))
+		var r := float(node.get_theme_constant("margin_right"))
+		var b := float(node.get_theme_constant("margin_bottom"))
+		for child in node.get_children():
+			if child is Control and child.visible:
+				h = maxf(h, _measure_min_height(child, width - l - r) + t + b)
+	elif node is PanelContainer:
+		var sb := node.get_theme_stylebox("panel")
+		var ml: float = sb.get_margin(SIDE_LEFT) if sb else 0.0
+		var mt: float = sb.get_margin(SIDE_TOP) if sb else 0.0
+		var mr: float = sb.get_margin(SIDE_RIGHT) if sb else 0.0
+		var mb: float = sb.get_margin(SIDE_BOTTOM) if sb else 0.0
+		for child in node.get_children():
+			if child is Control and child.visible:
+				h = maxf(h, _measure_min_height(child, width - ml - mr) + mt + mb)
 	else:
-		_vbox.clip_contents = false
-		if _dialog_container.minimum_size_changed.is_connected(_enforce_fixed_size):
-			_dialog_container.minimum_size_changed.disconnect(_enforce_fixed_size)
+		# Fixed-spec controls (buttons, spacers, sliders, icons, option
+		# buttons): combined minimum is a layout-independent constant.
+		h = node.get_combined_minimum_size().y
+	return maxf(h, node.custom_minimum_size.y)
 
-## Re-applies the last computed BASIC dialog size. Content minimum size is a
-## floor, never a cap: without this, a tall page grows the dialog past the
-## viewport on every layout pass.
-func _enforce_fixed_size() -> void:
-	if not fixed_size or _fixed_size_px == Vector2.ZERO:
+## Wrapped-label height at a known width, shaped by TextServer directly —
+## identical input to what the Label renders, computed without the scene tree.
+func _measure_wrapped_label(label: Label, width: float) -> float:
+	if label.text.is_empty():
+		return 0.0
+	var font := label.get_theme_font("font")
+	var font_size := label.get_theme_font_size("font_size")
+	var p := TextParagraph.new()
+	# Same autowrap-mode -> break-flags mapping Label applies (label.cpp).
+	match label.autowrap_mode:
+		TextServer.AUTOWRAP_WORD_SMART:
+			p.break_flags = TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
+		TextServer.AUTOWRAP_WORD:
+			p.break_flags = TextServer.BREAK_WORD_BOUND
+		TextServer.AUTOWRAP_ARBITRARY:
+			p.break_flags = TextServer.BREAK_GRAPHEME_BOUND
+		_:
+			p.break_flags = TextServer.BREAK_NONE
+	p.line_spacing = float(label.get_theme_constant("line_spacing"))
+	p.width = width
+	p.add_string(label.text, font, font_size)
+	return p.get_size().y
+
+## Debug assertion (stamped mode only): page content's combined minimum must
+## fit the stamped content area — content taller than the stamp is clipped by
+## the firewall instead of scrolling. Fires => fix the page content (give it a
+## ScrollContainer or hygienic fixed rows), do not re-add measurement here.
+## Content-sized mode is exempt: its labels report garbage minimums until the
+## first layout pass, and growth past the stamp is structurally impossible.
+func _report_content_budget(tag: String) -> void:
+	if _is_content_sized():
 		return
-	if dialog_variant != Variant.BASIC:
+	if not is_instance_valid(_vbox) or _fixed_size_px == Vector2.ZERO:
 		return
-	if not is_instance_valid(_dialog_container) or not is_instance_valid(_dialog_wrapper):
-		return
-	_dialog_container.size = _fixed_size_px
-	_dialog_wrapper.size = _fixed_size_px
-	var usable_rect = _get_usable_rect()
-	_dialog_wrapper.position = usable_rect.position + (usable_rect.size - _fixed_size_px) / 2.0
+	var sb := _dialog_container.get_theme_stylebox("panel")
+	var margin_w: float = (sb.get_margin(SIDE_LEFT) + sb.get_margin(SIDE_RIGHT)) if sb else 0.0
+	var margin_h: float = (sb.get_margin(SIDE_TOP) + sb.get_margin(SIDE_BOTTOM)) if sb else 0.0
+	var budget := _fixed_size_px - Vector2(margin_w, margin_h)
+	var min_size := _vbox.get_combined_minimum_size()
+	if min_size.x > budget.x + 1.0 or min_size.y > budget.y + 1.0:
+		M3Debug.geom("dialog", "CONTENT OVER BUDGET[%s]: content_min=%s content_area=%s" % [tag, min_size, budget])
+
+## Settled-geometry hook (broadcast by the app's overlay manager to persistent
+## overlays on debounced resizes and DS swaps): re-stamp from the new viewport.
+## Never re-measures content.
+func on_viewport_settled() -> void:
+	if visible and is_inside_tree():
+		_position_dialog()
 
 
 # ============================================
