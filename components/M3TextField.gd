@@ -170,6 +170,11 @@ func _init():
 
 func _ready():
 	clip_contents = false
+	# The native Android IME must never attach - the app uses its own on-screen
+	# keyboard. Set here too (not just PlatformSubManager.node_added) so fields
+	# created before that guard connected are covered.
+	if OS.get_name() == "Android":
+		virtual_keyboard_enabled = false
 	_cached_fonts = M3Theme.load_fonts()
 	_initialize_styleboxes()
 	_create_visual_children()
