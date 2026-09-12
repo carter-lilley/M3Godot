@@ -99,6 +99,15 @@ var start_icon_font: String = "MaterialIcons":
 		start_icon_font = value
 		_update_icons()
 
+## Overrides the size-spec inset icon size (dp) when > 0. XS/S sizes default
+## to 0 (no inset icons); set e.g. 12 for small icons inside the track ends.
+@export var inset_icon_size: int = 0:
+	set(value):
+		if value == inset_icon_size:
+			return
+		inset_icon_size = value
+		_update_icons()
+
 @export var end_icon_name: String = "":
 	set(value):
 		if value == end_icon_name:
@@ -525,7 +534,7 @@ func _update_icons():
 	if not _start_icon or not _end_icon:
 		return
 	
-	var icon_size_dp = SIZE_SPECS[slider_size]["icon_size"]
+	var icon_size_dp = inset_icon_size if inset_icon_size > 0 else SIZE_SPECS[slider_size]["icon_size"]
 	var icon_size_px = M3Units.dp(icon_size_dp)
 	
 	if icon_size_dp > 0 and start_icon_name:
