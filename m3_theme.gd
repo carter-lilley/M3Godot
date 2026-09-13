@@ -7,6 +7,31 @@ extends RefCounted
 static var is_dark_mode: bool = false
 
 # ============================================
+# FROSTED LOOK
+# ============================================
+
+static var frosted_look: bool = false
+
+const FROSTED_ALPHA := 0.6
+
+static var _frosted_material: ShaderMaterial
+
+static func get_frosted_material() -> ShaderMaterial:
+	if _frosted_material == null:
+		_frosted_material = ShaderMaterial.new()
+		_frosted_material.shader = load("res://shaders/frosted_backdrop.gdshader")
+	return _frosted_material
+
+## Returns a copy of the stylebox prepared for the frosted shader:
+## lowered bg alpha (controls frost density via COLOR mix) and no shadow
+## (the shader forces alpha to 1, which would make shadow pixels opaque).
+static func make_frosted(stylebox: StyleBoxFlat) -> StyleBoxFlat:
+	var s := stylebox.duplicate() as StyleBoxFlat
+	s.bg_color.a = FROSTED_ALPHA
+	s.shadow_size = 0
+	return s
+
+# ============================================
 # COLOR TOKENS
 # ============================================
 
@@ -388,18 +413,75 @@ static func hide_native_checkbutton_styleboxes(node: CheckButton):
 
 static var _cached_fonts: Dictionary = {}
 
+## Single font endpoint: one variable-weight font file backs every weight.
+## Kyodai (or any host app) swaps it via set_custom_font(); empty path or a
+## failed load falls back to the bundled default.
+const DEFAULT_FONT_PATH := "res://assets/fonts/MPLUS1-VariableFont_wght.ttf"
+const FONT_WEIGHTS := {
+	"light": 300,
+	"regular": 400,
+	"medium": 500,
+	"bold": 700,
+	"black": 900,
+}
+
+static var _custom_font_path: String = ""
+
+static func set_custom_font(path: String) -> void:
+	if path == _custom_font_path:
+		return
+	_custom_font_path = path
+	# Mutate cached variations in place: components cache font references
+	# locally, so rebuilding the dictionary would leave them stale.
+	if not _cached_fonts.is_empty():
+		var base: Font = _load_base_font(get_font_path())
+		for key in _cached_fonts:
+			if _cached_fonts[key] is FontVariation:
+				_cached_fonts[key].base_font = base
+	# Generated Themes bake in default_font, so they must be rebuilt too.
+	_generated_theme_cache.clear()
+
+static func get_font_path() -> String:
+	return _custom_font_path if not _custom_font_path.is_empty() else DEFAULT_FONT_PATH
+
+static func _load_base_font(path: String) -> Font:
+	var font: Font = null
+	if path.begins_with("res://"):
+		font = load(path)
+	else:
+		# Runtime-picked files (user://, absolute paths) have no importer.
+		var ff := FontFile.new()
+		if ff.load_dynamic_font(path) == OK:
+			font = ff
+	if font == null and path != DEFAULT_FONT_PATH:
+		push_warning("[M3Theme] Failed to load font '%s', falling back to default" % path)
+		font = load(DEFAULT_FONT_PATH)
+	return font
+
 static func load_fonts() -> Dictionary:
 	if not _cached_fonts.is_empty():
 		return _cached_fonts
 	var d = {}
-	var dir = "res://addons/m3/fonts/Roboto/"
-	d["regular"] = load(dir + "Roboto-Regular.ttf")
-	d["light"] = load(dir + "Roboto-Light.ttf")
-	d["medium"] = load(dir + "Roboto-Medium.ttf")
-	d["bold"] = load(dir + "Roboto-Bold.ttf")
-	d["black"] = load(dir + "Roboto-Black.ttf")
+	var base: Font = _load_base_font(get_font_path())
+	for key in FONT_WEIGHTS:
+		d[key] = _make_weight_variation(base, FONT_WEIGHTS[key])
 	_cached_fonts = d
 	return d
+
+## One-off variation at an arbitrary weight off the active font endpoint,
+## for consumers needing a weight outside FONT_WEIGHTS. Not cached.
+static func get_font_at_weight(weight: int) -> FontVariation:
+	return _make_weight_variation(_load_base_font(get_font_path()), weight)
+
+static var _wght_tag: int = 0
+
+static func _make_weight_variation(base: Font, weight: int) -> FontVariation:
+	if _wght_tag == 0:
+		_wght_tag = TextServerManager.get_primary_interface().name_to_tag("wght")
+	var variation := FontVariation.new()
+	variation.base_font = base
+	variation.variation_opentype = {_wght_tag: weight}
+	return variation
 
 static func clear_theme_cache() -> void:
 	_cached_fonts.clear()

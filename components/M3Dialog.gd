@@ -774,7 +774,10 @@ func _update_appearance():
 		sb.content_margin_right = pad
 		sb.content_margin_top = pad
 		sb.content_margin_bottom = pad
+		if M3Theme.frosted_look:
+			sb = M3Theme.make_frosted(sb)
 		_dialog_container.add_theme_stylebox_override("panel", sb)
+		_dialog_container.material = M3Theme.get_frosted_material() if M3Theme.frosted_look else null
 		# Don't use clip_children here. The BASIC stylebox already insets content by
 		# the full padding (24 dp, 16 dp on very small screens), which keeps the
 		# content rectangle well inside the 28 dp rounded panel shape. Using
@@ -795,24 +798,32 @@ func _update_appearance():
 			_hero_icon.icon_settings.icon_color = M3Theme.get_secondary()
 		
 	else:
+		var bg_col := M3Theme.get_surface()
+		var frosted_mat: ShaderMaterial = null
+		if M3Theme.frosted_look:
+			bg_col.a = M3Theme.FROSTED_ALPHA
+			frosted_mat = M3Theme.get_frosted_material()
 		if _cached_bg_sb == null:
 			_cached_bg_sb = StyleBoxFlat.new()
-		_cached_bg_sb.bg_color = M3Theme.get_surface()
+		_cached_bg_sb.bg_color = bg_col
 		for child in _dialog_container.get_children():
 			if child.name == "FullscreenBackground":
 				child.add_theme_stylebox_override("panel", _cached_bg_sb)
+				child.material = frosted_mat
 				break
-		
+
 		if _cached_top_bar_sb == null:
 			_cached_top_bar_sb = StyleBoxFlat.new()
-		_cached_top_bar_sb.bg_color = M3Theme.get_surface()
+		_cached_top_bar_sb.bg_color = bg_col
 		_top_bar.add_theme_stylebox_override("panel", _cached_top_bar_sb)
+		_top_bar.material = frosted_mat
 		_style_label(_top_bar_title, fonts["regular"], M3Units.dp(22), M3Theme.get_on_surface())
 		
 		if _cached_bottom_actions_sb == null:
 			_cached_bottom_actions_sb = StyleBoxFlat.new()
-		_cached_bottom_actions_sb.bg_color = M3Theme.get_surface()
+		_cached_bottom_actions_sb.bg_color = bg_col
 		_bottom_actions.add_theme_stylebox_override("panel", _cached_bottom_actions_sb)
+		_bottom_actions.material = frosted_mat
 		
 		_style_label(_title_label, fonts["regular"], M3Units.dp(24), M3Theme.get_on_surface())
 		_style_label(_body_label, fonts["regular"], M3Units.dp(14), M3Theme.get_on_surface_variant())

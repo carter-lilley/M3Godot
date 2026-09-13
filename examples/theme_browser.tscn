@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bsmaammql47lc" path="res://addons/m3/examples/theme_browser.gd" id="1_0j3r5"]
 [ext_resource type="Script" uid="uid://63mocgx1dxi4" path="res://addons/m3/components/M3Slider.gd" id="2_m3slider"]
-[ext_resource type="FontFile" uid="uid://cpvn61qwhfdj4" path="res://addons/m3/fonts/Roboto/Roboto-Regular.ttf" id="2_nx03t"]
+[ext_resource type="FontFile" uid="uid://ckotp1w56fjn8" path="res://assets/fonts/MPLUS1-VariableFont_wght.ttf" id="2_nx03t"]
 [ext_resource type="Script" uid="uid://dxu4u734ecmxi" path="res://addons/m3/components/M3TextField.gd" id="3_6rsmr"]
 [ext_resource type="Script" uid="uid://dv82iypo8etp8" path="res://addons/m3/components/M3Button.gd" id="3_m3button"]
 [ext_resource type="Script" uid="uid://b1bkbdpl5f4f3" path="res://addons/m3/components/M3NavigationRail.gd" id="4_m3navrail"]

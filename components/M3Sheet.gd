@@ -131,8 +131,14 @@ func _update_appearance():
 		_sheet_container.add_theme_stylebox_override("panel", style)
 	
 	style.bg_color = M3Theme.get_surface_container_low()
-	
-	if sheet_variant == Variant.MODAL:
+
+	if M3Theme.frosted_look:
+		style.bg_color.a = M3Theme.FROSTED_ALPHA
+		_sheet_container.material = M3Theme.get_frosted_material()
+	else:
+		_sheet_container.material = null
+
+	if sheet_variant == Variant.MODAL and not M3Theme.frosted_look:
 		style.shadow_color = M3Theme.ELEVATION_1["color"]
 		style.shadow_size = M3Theme.ELEVATION_1["size"]
 		style.shadow_offset = M3Theme.ELEVATION_1["offset"]

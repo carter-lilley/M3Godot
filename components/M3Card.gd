@@ -193,6 +193,7 @@ var show_background: bool = true:
 			queue_redraw()
 			_update_focus_ring_bounds()
 			_update_media_panel_size(true)
+			_update_visual_items_visibility()
 
 var show_text_margin: bool = true:
 	set(value):
@@ -574,6 +575,7 @@ func _free_rs_items() -> void:
 	if _focus_ring_canvas_item.is_valid():
 		RenderingServer.free_rid(_focus_ring_canvas_item)
 		_focus_ring_canvas_item = RID()
+	_frosted_applied = false
 	_headline_text_line = null
 	_supporting_text_line = null
 
@@ -585,7 +587,7 @@ func _update_visual_items_visibility() -> void:
 	# Background and text are only drawn through RS when a visual layer is active.
 	# Placeholders hide both; they render only the blank media panel.
 	if _visual_bg_canvas_item.is_valid():
-		var bg_visible := base_visible and show_background and using_layer and not _is_placeholder
+		var bg_visible := base_visible and show_background and _uses_rs_background() and not _is_placeholder
 		if using_layer:
 			bg_visible = bg_visible and _visuals_position_synced
 		RenderingServer.canvas_item_set_visible(_visual_bg_canvas_item, bg_visible)
@@ -640,6 +642,8 @@ func _setup_rs_items() -> void:
 	# such as PlatformCard, which dramatically reduces per-card cost.
 	if _uses_visual_layer():
 		_create_visual_layer_rs_items(parent_rid)
+	elif M3Theme.frosted_look and show_background:
+		_ensure_bg_canvas_item()
 	
 	_visuals_position_synced = false
 	_applied_text_bounds = Rect2()
@@ -654,6 +658,8 @@ func _enter_tree():
 	if not _media_canvas_item.is_valid() or not _focus_ring_canvas_item.is_valid():
 		missing = true
 	if _uses_visual_layer() and (not _visual_bg_canvas_item.is_valid() or not _text_canvas_item.is_valid()):
+		missing = true
+	elif M3Theme.frosted_look and show_background and not _visual_bg_canvas_item.is_valid():
 		missing = true
 	if missing:
 		_setup_rs_items()
@@ -824,7 +830,7 @@ func _draw():
 	var radius = int(round(card_rounding_ratio * max_radius))
 	_configure_stylebox_for_state()
 	_cached_stylebox.set_corner_radius_all(radius)
-	if _uses_visual_layer():
+	if _uses_rs_background() and _visual_bg_canvas_item.is_valid():
 		_redraw_visual_background(rect)
 	else:
 		draw_style_box(_cached_stylebox, rect)
@@ -832,6 +838,10 @@ func _draw():
 func _redraw_visual_background(rect: Rect2) -> void:
 	if not _visual_bg_canvas_item.is_valid():
 		return
+	if not _uses_visual_layer():
+		# Frosted-only item parented to the card's own canvas item: always
+		# local space, never a stale layer-space transform.
+		RenderingServer.canvas_item_set_transform(_visual_bg_canvas_item, Transform2D())
 	RenderingServer.canvas_item_clear(_visual_bg_canvas_item)
 	_cached_stylebox.draw(_visual_bg_canvas_item, rect)
 
@@ -863,13 +873,52 @@ func _configure_stylebox_for_state():
 		bg = M3Theme.disabled_color(bg)
 	elif _state_opacity > 0.001:
 		bg = M3Theme.state_overlay(bg, M3Theme.get_on_surface(), _state_opacity)
-	
+
+	if M3Theme.frosted_look:
+		bg.a = minf(bg.a, M3Theme.FROSTED_ALPHA)
+		shadow_size = 0
+
 	_cached_stylebox.bg_color = bg
 	_cached_stylebox.set_border_width_all(outline_w)
 	_cached_stylebox.border_color = outline_c
 	_cached_stylebox.shadow_size = shadow_size
 	_cached_stylebox.shadow_offset = shadow_off
 	_cached_stylebox.shadow_color = shadow_col
+
+	_apply_frosted_material()
+
+var _frosted_applied: bool = false
+
+func _uses_rs_background() -> bool:
+	return _uses_visual_layer() or (M3Theme.frosted_look and show_background)
+
+## Creates the background RS item when the stylebox must render off the
+## control's own canvas item (visual layer, or frosted look). The frosted
+## material only ever goes on this leaf item: raw RS canvas items inherit
+## their parent item's material, so putting it on the control would leak the
+## shader into the media subtree and break its alpha-based crop.
+func _ensure_bg_canvas_item() -> void:
+	if _visual_bg_canvas_item.is_valid():
+		return
+	_visual_bg_canvas_item = RenderingServer.canvas_item_create()
+	var target_parent := _visual_layer_rid if _uses_visual_layer() else get_canvas_item()
+	RenderingServer.canvas_item_set_parent(_visual_bg_canvas_item, target_parent)
+	RenderingServer.canvas_item_set_draw_index(_visual_bg_canvas_item, 0)
+	RenderingServer.canvas_item_set_visible(_visual_bg_canvas_item, true)
+
+func _apply_frosted_material() -> void:
+	var want := M3Theme.frosted_look and show_background
+	if want:
+		_ensure_bg_canvas_item()
+		if _visual_bg_canvas_item.is_valid() and not _frosted_applied:
+			RenderingServer.canvas_item_set_material(_visual_bg_canvas_item, M3Theme.get_frosted_material().get_rid())
+	elif _frosted_applied and _visual_bg_canvas_item.is_valid():
+		if _uses_visual_layer():
+			RenderingServer.canvas_item_set_material(_visual_bg_canvas_item, RID())
+		else:
+			RenderingServer.free_rid(_visual_bg_canvas_item)
+			_visual_bg_canvas_item = RID()
+	_frosted_applied = want
 
 func _has_media_content() -> bool:
 	return _media_content != null or media_texture != null

@@ -2,7 +2,7 @@ class_name M3Label
 extends Label
 
 ## Material 3 Label Component
-## Drop-in Label replacement that auto-applies M3 typography (Roboto) and colors.
+## Drop-in Label replacement that auto-applies M3 typography and colors.
 
 enum Style {
 	DISPLAY_LARGE,
