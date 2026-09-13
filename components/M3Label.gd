@@ -38,17 +38,26 @@ enum Style {
 		if is_node_ready():
 			_apply_style()
 
+## Extra leading between lines in pixels; 0 uses the font's default spacing.
+@export var line_spacing: float = 0.0:
+	set(value):
+		if value == line_spacing:
+			return
+		line_spacing = value
+		if is_node_ready():
+			_apply_style()
+
 # ============================================
 # STYLE SPEC (M3 Type Scale)
 # ============================================
 
 const _STYLE_SPECS: Dictionary = {
-	Style.DISPLAY_LARGE:   {"weight": "regular", "size": 57},
-	Style.DISPLAY_MEDIUM:  {"weight": "regular", "size": 45},
-	Style.DISPLAY_SMALL:   {"weight": "regular", "size": 36},
-	Style.HEADLINE_LARGE:  {"weight": "regular", "size": 32},
-	Style.HEADLINE_MEDIUM: {"weight": "regular", "size": 28},
-	Style.HEADLINE_SMALL:  {"weight": "regular", "size": 24},
+	Style.DISPLAY_LARGE:   {"weight": "bold", "size": 57},
+	Style.DISPLAY_MEDIUM:  {"weight": "bold", "size": 45},
+	Style.DISPLAY_SMALL:   {"weight": "bold", "size": 36},
+	Style.HEADLINE_LARGE:  {"weight": "bold", "size": 32},
+	Style.HEADLINE_MEDIUM: {"weight": "bold", "size": 28},
+	Style.HEADLINE_SMALL:  {"weight": "bold", "size": 24},
 	Style.TITLE_LARGE:     {"weight": "medium",  "size": 22},
 	Style.TITLE_MEDIUM:    {"weight": "medium",  "size": 16},
 	Style.TITLE_SMALL:     {"weight": "medium",  "size": 14},
@@ -82,6 +91,10 @@ func _apply_style():
 		add_theme_font_override("font", font)
 	add_theme_font_size_override("font_size", font_size)
 	add_theme_color_override("font_color", color)
+	if line_spacing != 0.0:
+		add_theme_constant_override("line_spacing", int(line_spacing))
+	else:
+		remove_theme_constant_override("line_spacing")
 
 func refresh_theme():
 	_apply_style()

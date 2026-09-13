@@ -279,14 +279,14 @@ func dismiss():
 	# guarded by _dismissing, and global pull-back is suppressed for the grab.
 	if _renderer:
 		_renderer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	M3Overlay._suppress_focus_pullback = true
+	M3Overlay.push_focus_pullback_suppression()
 	if _parent_menu == null and _summoner != null and is_instance_valid(_summoner):
 		var focus_owner := get_viewport().gui_get_focus_owner()
 		if focus_owner == null or focus_owner == self or is_ancestor_of(focus_owner):
 			if UIManager:
 				UIManager.suppress_next_focus_sound()
 			_summoner.grab_focus()
-	M3Overlay._suppress_focus_pullback = false
+	M3Overlay.pop_focus_pullback_suppression()
 
 	if not Engine.is_editor_hint() and is_inside_tree() and _renderer and _renderer.visible:
 		if _dismiss_tween and _dismiss_tween.is_valid():

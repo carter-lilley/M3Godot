@@ -12,7 +12,7 @@ static var is_dark_mode: bool = false
 
 static var frosted_look: bool = false
 
-const FROSTED_ALPHA := 0.6
+const FROSTED_ALPHA := 0.95
 
 static var _frosted_material: ShaderMaterial
 

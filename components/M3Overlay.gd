@@ -13,10 +13,21 @@ extends CanvasLayer
 static var _active: Dictionary = {}
 static var _max_layer: int = 0
 
-# Temporary suppression for focus pull-back, used when an overlay (e.g. a menu)
-# is returning focus to its summoner and the underlying overlay must not yank it
-# back, which would otherwise cause infinite recursion.
-static var _suppress_focus_pullback: bool = false
+# Reference-counted suppression for focus pull-back, used when an overlay
+# (e.g. a menu) is returning focus to its summoner and the underlying overlay
+# must not yank it back, which would otherwise cause infinite recursion.
+# Counted instead of a bool so overlapping suppressors can't re-enable
+# pull-back while another still needs it.
+static var _focus_pullback_suppression_count: int = 0
+
+static func push_focus_pullback_suppression() -> void:
+	_focus_pullback_suppression_count += 1
+
+static func pop_focus_pullback_suppression() -> void:
+	_focus_pullback_suppression_count = maxi(0, _focus_pullback_suppression_count - 1)
+
+static func is_focus_pullback_suppressed() -> bool:
+	return _focus_pullback_suppression_count > 0
 
 ## Get the effective parent node for overlays.
 ## In dual-screen mode the "m3_overlay_parent" node group is used so overlays
@@ -118,7 +129,7 @@ func ensure_overlay_parent() -> void:
 		_reconnect_viewport_focus()
 
 func _on_overlay_focus_changed(control: Control) -> void:
-	if _suppress_focus_pullback:
+	if is_focus_pullback_suppressed():
 		return
 	if not visible:
 		return
