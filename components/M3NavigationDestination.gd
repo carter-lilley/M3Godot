@@ -7,6 +7,11 @@ static var _shared_empty_stylebox: StyleBoxEmpty = StyleBoxEmpty.new()
 static func clear_shared_stylebox() -> void:
 	_shared_empty_stylebox = null
 
+static func _get_empty_stylebox() -> StyleBoxEmpty:
+	if _shared_empty_stylebox == null:
+		_shared_empty_stylebox = StyleBoxEmpty.new()
+	return _shared_empty_stylebox
+
 signal context_menu_requested()
 
 ## Material 3 Navigation Destination
@@ -207,7 +212,7 @@ func _ready():
 	add_child(_long_press_timer)
 	
 	# Clear native focus stylebox so focus ring is drawn only around the pill
-	add_theme_stylebox_override("focus", _shared_empty_stylebox)
+	add_theme_stylebox_override("focus", _get_empty_stylebox())
 
 # ============================================
 # OVERRIDES
@@ -228,7 +233,7 @@ func _update_theme():
 	super._update_theme()
 	# Clear native focus stylebox after parent sets it
 	# so focus ring is drawn only around the pill in _draw()
-	add_theme_stylebox_override("focus", _shared_empty_stylebox)
+	add_theme_stylebox_override("focus", _get_empty_stylebox())
 	_update_label_color()
 
 func _get_variant_colors(selected: bool) -> Dictionary:

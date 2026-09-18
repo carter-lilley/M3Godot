@@ -8,6 +8,11 @@ static var _shared_empty_stylebox: StyleBoxEmpty = StyleBoxEmpty.new()
 static func clear_shared_stylebox() -> void:
 	_shared_empty_stylebox = null
 
+static func _get_empty_stylebox() -> StyleBoxEmpty:
+	if _shared_empty_stylebox == null:
+		_shared_empty_stylebox = StyleBoxEmpty.new()
+	return _shared_empty_stylebox
+
 ## Material 3 Menu Renderer
 ## Visual popup layer for M3Menu. Lazy-loaded when popup() is called.
 ## Handles rendering, input, keyboard navigation, and dismissal.
@@ -491,11 +496,11 @@ func _create_interactable_node(item: M3MenuItem, index: int, height: float) -> B
 	
 	# Suppress native Button visuals; we draw our own overlay
 	node.flat = true
-	node.add_theme_stylebox_override("normal", _shared_empty_stylebox)
-	node.add_theme_stylebox_override("pressed", _shared_empty_stylebox)
-	node.add_theme_stylebox_override("hover", _shared_empty_stylebox)
-	node.add_theme_stylebox_override("disabled", _shared_empty_stylebox)
-	node.add_theme_stylebox_override("focus", _shared_empty_stylebox)
+	node.add_theme_stylebox_override("normal", _get_empty_stylebox())
+	node.add_theme_stylebox_override("pressed", _get_empty_stylebox())
+	node.add_theme_stylebox_override("hover", _get_empty_stylebox())
+	node.add_theme_stylebox_override("disabled", _get_empty_stylebox())
+	node.add_theme_stylebox_override("focus", _get_empty_stylebox())
 	
 	# Hover/selected overlay - Panel with rounded StyleBoxFlat, inset 4dp from edges
 	var overlay = Panel.new()

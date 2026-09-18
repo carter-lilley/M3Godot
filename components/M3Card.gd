@@ -204,6 +204,19 @@ var show_text_margin: bool = true:
 			_update_media_panel_size(true)
 			queue_redraw()
 
+## When true, text is drawn centered (horizontally and vertically) over the
+## whole card instead of in the reserved text margin. Used by GameCard to show
+## titles on cover-less games in Media Only mode.
+var text_centered_overlay: bool = false:
+	set(value):
+		if text_centered_overlay == value:
+			return
+		text_centered_overlay = value
+		if _ready_called:
+			_update_media_panel_size(true)
+			_update_text()
+			queue_redraw()
+
 var card_rounding_ratio: float = 0.12:
 	set(value):
 		var clamped = clampf(value, 0.0, 1.0)
@@ -290,6 +303,7 @@ var _applied_supporting_text: String = ""
 var _applied_h_align: int = -1
 var _applied_text_bounds: Rect2 = Rect2()
 var _applied_show_background: bool = true
+var _applied_text_centered_overlay: bool = false
 var _applied_fonts: Dictionary = {}
 
 var _last_media_min_x: float = -1.0
@@ -1045,6 +1059,8 @@ func _update_text() -> void:
 	var font_color := M3Theme.get_on_surface()
 	var supporting_color := M3Theme.get_on_surface_variant()
 	var h_align: int = _get_horizontal_alignment()
+	if text_centered_overlay:
+		h_align = HORIZONTAL_ALIGNMENT_CENTER
 	var needs_shadow := not show_background
 	var has_headline := not headline.is_empty()
 	var has_supporting := not supporting_text.is_empty() and size.y >= M3Units.dp(100.0)
@@ -1060,6 +1076,7 @@ func _update_text() -> void:
 		or h_align != _applied_h_align
 		or needs_shadow != _applied_text_shadow_enabled
 		or show_background != _applied_show_background
+		or text_centered_overlay != _applied_text_centered_overlay
 		or not text_rect.is_equal_approx(_applied_text_bounds)
 		or fonts != _applied_fonts
 	)
@@ -1075,6 +1092,7 @@ func _update_text() -> void:
 	_applied_h_align = h_align
 	_applied_text_shadow_enabled = needs_shadow
 	_applied_show_background = show_background
+	_applied_text_centered_overlay = text_centered_overlay
 	_applied_text_bounds = text_rect
 	_applied_fonts = fonts
 	
@@ -1099,11 +1117,23 @@ func _update_text() -> void:
 	var shadow_color := Color(0.0, 0.0, 0.0, 0.5)
 	var use_text_line := ClassDB.class_exists("TextLine")
 	var headline_h := 0.0
-	
+
+	# Centered overlay: vertically center the whole text block in the card.
+	var block_start_y := inner_y
+	if text_centered_overlay:
+		var block_h := 0.0
+		if has_headline:
+			block_h += fonts[headline_spec.weight].get_height(int(M3Units.dp(headline_spec.size)))
+		if has_supporting:
+			if has_headline:
+				block_h += label_gap
+			block_h += fonts[supporting_spec.weight].get_height(int(M3Units.dp(supporting_spec.size)))
+		block_start_y = inner_y + maxf(0.0, (inner_h - block_h) * 0.5)
+
 	if has_headline:
 		var headline_font: Font = fonts[headline_spec.weight]
 		var headline_size := int(M3Units.dp(headline_spec.size))
-		var headline_y := inner_y
+		var headline_y := block_start_y
 		if use_text_line:
 			if _headline_text_line == null:
 				_headline_text_line = TextLine.new()
@@ -1128,7 +1158,7 @@ func _update_text() -> void:
 		var supporting_font: Font = fonts[supporting_spec.weight]
 		var supporting_size := int(M3Units.dp(supporting_spec.size))
 		var gap := label_gap if has_headline else 0.0
-		var supporting_y := inner_y + headline_h + gap
+		var supporting_y := block_start_y + headline_h + gap
 		if supporting_y + supporting_size > inner_y + inner_h:
 			return
 		if use_text_line:
@@ -1363,16 +1393,20 @@ func _update_media_panel_size(force: bool = false) -> void:
 	var media_y: float = 0.0
 	var text_x: float = 0.0
 	var text_y: float = 0.0
-	
+
+	# Centered-overlay text floats over the media, so it must not shrink the
+	# media panel to reserve a margin (that would make the card render short).
+	var reserve_text_margin := show_text_margin and not text_centered_overlay
+
 	if _has_media_content():
 		if card_layout_mode == LayoutMode.VERTICAL:
 			text_w = card_w
 			media_w = card_w
-			
+
 			if media_aspect_ratio > 0.0:
 				var desired_h = card_w / media_aspect_ratio
 				var max_h = card_h
-				if show_text_margin:
+				if reserve_text_margin:
 					var min_text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale(), not headline.is_empty()))
 					max_h = card_h - min_text_h
 				media_h = clampf(desired_h, M3Units.dp(40.0), maxf(M3Units.dp(40.0), max_h))
@@ -1380,20 +1414,20 @@ func _update_media_panel_size(force: bool = false) -> void:
 					media_w = max_h * media_aspect_ratio
 			else:
 				var min_text_h := 0.0
-				if show_text_margin:
+				if reserve_text_margin:
 					min_text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale(), not headline.is_empty()))
 				media_h = maxf(M3Units.dp(40.0), card_h - min_text_h)
-				if not show_text_margin:
+				if not reserve_text_margin:
 					media_h = card_h
-			
+
 			media_h = minf(media_h, card_h)
 			text_h = card_h - media_h
-			
+
 			if content_alignment == ContentAlignment.END:
 				text_y = 0
 				media_y = text_h
 			elif content_alignment == ContentAlignment.CENTER:
-				if show_text_margin:
+				if reserve_text_margin:
 					text_h = M3Units.dp(get_min_text_height_dp(card_h / M3Units.get_scale(), not headline.is_empty()))
 					var total_h = media_h + text_h
 					var start_y = (card_h - total_h) / 2.0
@@ -1406,39 +1440,39 @@ func _update_media_panel_size(force: bool = false) -> void:
 			else:
 				media_y = 0
 				text_y = media_h
-			
+
 			media_x = (card_w - media_w) / 2.0
 			text_x = 0
-			
+
 		elif card_layout_mode == LayoutMode.HORIZONTAL:
 			media_h = card_h
 			text_h = card_h
-			
+
 			if media_aspect_ratio > 0.0:
 				var desired_w = card_h * media_aspect_ratio
 				var max_w = card_w
-				if show_text_margin:
+				if reserve_text_margin:
 					max_w = card_w - M3Units.dp(80.0)
 				media_w = clampf(desired_w, M3Units.dp(40.0), maxf(M3Units.dp(40.0), max_w))
 				if desired_w > max_w and max_w > 0:
 					media_h = max_w / media_aspect_ratio
 			else:
 				media_w = M3Units.dp(MEDIA_WIDTH_LIST)
-				if show_text_margin:
+				if reserve_text_margin:
 					media_w = minf(media_w, card_w - M3Units.dp(80.0))
 				media_w = maxf(media_w, M3Units.dp(40.0))
-				if not show_text_margin:
+				if not reserve_text_margin:
 					media_w = card_w
-			
+
 			media_w = minf(media_w, card_w)
 			media_h = minf(media_h, card_h)
-			
+
 			if content_alignment == ContentAlignment.END:
 				text_w = card_w - media_w
 				text_x = 0
 				media_x = text_w
 			elif content_alignment == ContentAlignment.CENTER:
-				if show_text_margin:
+				if reserve_text_margin:
 					var text_content_w = M3Units.dp(160.0)
 					var margin_pad = M3Units.dp(PADDING)
 					text_w = text_content_w + margin_pad * 2.0
@@ -1454,12 +1488,15 @@ func _update_media_panel_size(force: bool = false) -> void:
 				text_w = card_w - media_w
 				media_x = 0
 				text_x = media_w
-			
+
 			media_y = (card_h - media_h) / 2.0
 			text_y = 0
 	
 	_media_bounds = Rect2(media_x, media_y, media_w, media_h)
 	_text_bounds = Rect2(text_x, text_y, text_w, text_h)
+	if text_centered_overlay:
+		# Centered-overlay text floats over the media and gets the full card.
+		_text_bounds = Rect2(0.0, 0.0, card_w, card_h)
 
 	# Cards without a visual layer render media in their own canvas and need the
 	# local offset here. Visual-layer cards must NOT be written directly: the

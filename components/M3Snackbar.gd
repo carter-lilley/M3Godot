@@ -81,7 +81,9 @@ func _ready():
 	
 	_container.mouse_entered.connect(_on_mouse_entered)
 	_container.mouse_exited.connect(_on_mouse_exited)
-	get_viewport().size_changed.connect(_on_viewport_resized)
+	# Size against the resolved sizing viewport (MainViewport in DS mode), not
+	# the raw root window — the root never changes on a Thor screen swap.
+	M3Overlay.get_sizing_viewport(get_viewport()).size_changed.connect(_on_viewport_resized)
 
 func _on_overlay_focus_changed(control: Control) -> void:
 	# Snackbars are transient, non-modal notifications and should never trap
@@ -157,7 +159,7 @@ func _setup_timer():
 	add_child(_timer)
 
 func _position_snackbar():
-	var viewport_size = get_viewport().get_visible_rect().size
+	var viewport_size = M3Overlay.get_sizing_viewport(get_viewport()).get_visible_rect().size
 	var margin = M3Units.dp(MOBILE_MARGIN)
 	var max_width = M3Units.dp(MAX_WIDTH)
 	var height = M3Units.dp(SNACKBAR_HEIGHT)
