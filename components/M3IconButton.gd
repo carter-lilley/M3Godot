@@ -120,6 +120,7 @@ func _update_size():
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	var height_px = M3Units.dp(spec["height"])
 	var icon_size_px = max(1.0, M3Units.dp(spec["icon_size"]))
+	print("[ICON_DEBUG] _update_size %s: scale=%.3f icon_px=%.2f btn_size=%s icon_node_size=%s" % [name, M3Units.get_scale(), icon_size_px, size, _icon_node.size if _icon_node else "null"])
 	
 	var width_key = "width_default"
 	match icon_button_width:
@@ -130,7 +131,10 @@ func _update_size():
 	var width_px = M3Units.dp(spec[width_key])
 	
 	custom_minimum_size = Vector2(width_px, height_px)
-	
+
+	# Keep the inherited cache in sync: badge ICON anchoring reads it.
+	_cached_icon_size_px = icon_size_px
+
 	if _icon_node:
 		_icon_node.icon_settings.icon_size = icon_size_px
 		_icon_node.custom_minimum_size = Vector2(icon_size_px, icon_size_px)
@@ -159,12 +163,14 @@ func _update_icon_position():
 	
 	var spec = ICON_SIZE_SPECS[icon_button_size]
 	var icon_size_px = M3Units.dp(spec["icon_size"])
-	
-	# Center icon both horizontally and vertically
-	_icon_node.position = Vector2(
+
+	var new_pos := Vector2(
 		(size.x - icon_size_px) / 2.0,
 		(size.y - icon_size_px) / 2.0
 	)
+	print("[ICON_DEBUG] _update_icon_position %s: scale=%.3f btn_size=%s icon_px=%.2f icon_node_size=%s font_size=%d new_pos=%s" % [name, M3Units.get_scale(), size, icon_size_px, _icon_node.size, _icon_node.icon_settings.icon_size, new_pos])
+	# Center icon both horizontally and vertically
+	_icon_node.position = new_pos
 
 func _configure_stylebox(style: StyleBoxFlat, bg: Color, radius: int, pad_h: int, icon_gap: int = -1, has_icon: bool = false, border_w: int = 0, border_c: Color = Color.TRANSPARENT, shadow_size: int = 0, shadow_off: Vector2 = Vector2.ZERO, shadow_col: Color = Color.TRANSPARENT):
 	if not style:

@@ -406,17 +406,19 @@ func _update_badge_position():
 	var badge_px: float = _cached_badge_size_px
 	if icon_anchored:
 		badge_px = clamp(anchor_size.x * 0.55, M3Units.dp(12), M3Units.dp(22))
-		_badge.size = Vector2(badge_px, badge_px)
-		_badge.refresh()
+	# Multi-glyph badges measure wider than tall; single-glyph stays square
+	var badge_size := _badge.measure(badge_px)
+	_badge.size = badge_size
+	_badge.refresh()
 
 	# Straddle the corner, mostly inside the anchor bounds
 	var badge_x: float
 	match badge_corner:
 		BadgeCorner.BOTTOM_LEFT:
-			badge_x = anchor_origin.x - badge_px * 0.3
+			badge_x = anchor_origin.x - badge_size.x * 0.3
 		_:
-			badge_x = anchor_origin.x + anchor_size.x - badge_px * 0.7
-	_badge.position = Vector2(badge_x, anchor_origin.y + anchor_size.y - badge_px * 0.7)
+			badge_x = anchor_origin.x + anchor_size.x - badge_size.x * 0.7
+	_badge.position = Vector2(badge_x, anchor_origin.y + anchor_size.y - badge_size.y * 0.7)
 
 func _get_size_spec() -> Dictionary:
 	return SIZE_SPECS[button_size]
@@ -776,6 +778,13 @@ func refresh_scale() -> void:
 		_badge.size = _badge.custom_minimum_size
 		_badge.refresh()
 		_update_badge_position()
+	# Re-center icon/badge once layout settles: buttons whose pixel size didn't
+	# change never get NOTIFICATION_RESIZED, so without this the icon keeps the
+	# position computed for the old scale. Deferred calls run after the
+	# container sort pass (queued earlier by the min-size change), so size is
+	# final when they execute.
+	call_deferred("_update_icon_position")
+	call_deferred("_update_badge_position")
 	refresh_theme()
 
 func _update_icon_color(colors: Dictionary = {}, selected_colors: Dictionary = {}):
