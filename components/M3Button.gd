@@ -150,6 +150,15 @@ enum BadgeAnchor { BUTTON, ICON }
 		badge_anchor = value
 		_update_badge_position()
 
+## Per-instance badge diameter in dp. Defaults to BADGE_SIZE_DP; override for
+## contexts that need a smaller badge (e.g. the shuffler controls palette).
+@export var badge_size_dp: int = BADGE_SIZE_DP:
+	set(value):
+		badge_size_dp = max(1, value)
+		_cached_badge_size_px = max(1, M3Units.dp(badge_size_dp))
+		if _badge:
+			_update_badge_position()
+
 @export var m3_tooltip_text: String = ""
 @export var m3_tooltip_variant: M3Tooltip.Variant = M3Tooltip.Variant.PLAIN
 
@@ -373,7 +382,7 @@ func _create_icon():
 func _create_badge():
 	if is_instance_valid(_badge):
 		return
-	_cached_badge_size_px = max(1, M3Units.dp(BADGE_SIZE_DP))
+	_cached_badge_size_px = max(1, M3Units.dp(badge_size_dp))
 	_badge = M3Badge.new()
 	_badge.name = "Badge"
 	_badge.z_index = 2
@@ -405,7 +414,7 @@ func _update_badge_position():
 	# Scale the badge to the anchor; a full-size badge would dwarf an icon
 	var badge_px: float = _cached_badge_size_px
 	if icon_anchored:
-		badge_px = clamp(anchor_size.x * 0.55, M3Units.dp(12), M3Units.dp(22))
+		badge_px = clamp(anchor_size.x * 0.55, minf(M3Units.dp(12), M3Units.dp(badge_size_dp)), M3Units.dp(badge_size_dp))
 	# Multi-glyph badges measure wider than tall; single-glyph stays square
 	var badge_size := _badge.measure(badge_px)
 	_badge.size = badge_size
@@ -773,7 +782,7 @@ func refresh_theme():
 func refresh_scale() -> void:
 	_update_size()
 	if _badge:
-		_cached_badge_size_px = max(1, M3Units.dp(BADGE_SIZE_DP))
+		_cached_badge_size_px = max(1, M3Units.dp(badge_size_dp))
 		_badge.custom_minimum_size = Vector2(_cached_badge_size_px, _cached_badge_size_px)
 		_badge.size = _badge.custom_minimum_size
 		_badge.refresh()
