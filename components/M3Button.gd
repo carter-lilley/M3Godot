@@ -139,6 +139,22 @@ enum BadgeCorner { BOTTOM_RIGHT, BOTTOM_LEFT }
 		badge_corner = value
 		_update_badge_position()
 
+## Optional second badge (e.g. the two buttons of a controller chord hint).
+## Shares badge_icon_font and badge_size_dp with the primary badge.
+@export var badge_icon_name_2: String = "":
+	set(value):
+		if value == badge_icon_name_2:
+			return
+		badge_icon_name_2 = value
+		_update_badge()
+
+@export var badge_corner_2: BadgeCorner = BadgeCorner.BOTTOM_RIGHT:
+	set(value):
+		if value == badge_corner_2:
+			return
+		badge_corner_2 = value
+		_update_badge_position()
+
 enum BadgeAnchor { BUTTON, ICON }
 
 ## BUTTON anchors the badge to the button's corner; ICON anchors it to the
@@ -214,6 +230,7 @@ var _cached_icon_size_px: int = 0
 # Badge: small circle overlapping the bottom-right corner, M3 badge pattern
 const BADGE_SIZE_DP := 22
 var _badge: M3Badge
+var _badge2: M3Badge
 var _cached_badge_size_px: int = 0
 
 ## When false, M3Button will not auto-set size_flags_vertical or custom_minimum_size.y.
@@ -389,17 +406,28 @@ func _create_badge():
 	_badge.custom_minimum_size = Vector2(_cached_badge_size_px, _cached_badge_size_px)
 	_badge.size = _badge.custom_minimum_size
 	add_child(_badge)
+	_badge2 = M3Badge.new()
+	_badge2.name = "Badge2"
+	_badge2.z_index = 2
+	_badge2.custom_minimum_size = _badge.custom_minimum_size
+	_badge2.size = _badge.custom_minimum_size
+	add_child(_badge2)
 
 func _update_badge():
 	if not _badge:
 		return
 	_badge.icon_font = badge_icon_font
 	_badge.icon_name = badge_icon_name
-	if _badge.visible:
-		_update_badge_position()
+	_badge2.icon_font = badge_icon_font
+	_badge2.icon_name = badge_icon_name_2
+	_update_badge_position()
 
 func _update_badge_position():
-	if not _badge or not _badge.visible:
+	_position_badge(_badge, badge_corner)
+	_position_badge(_badge2, badge_corner_2)
+
+func _position_badge(badge: M3Badge, corner: BadgeCorner):
+	if not badge or not badge.visible:
 		return
 
 	# Anchor rect: the icon glyph when requested and visible, else the button
@@ -415,19 +443,18 @@ func _update_badge_position():
 	var badge_px: float = _cached_badge_size_px
 	if icon_anchored:
 		badge_px = clamp(anchor_size.x * 0.55, minf(M3Units.dp(12), M3Units.dp(badge_size_dp)), M3Units.dp(badge_size_dp))
-	# Multi-glyph badges measure wider than tall; single-glyph stays square
-	var badge_size := _badge.measure(badge_px)
-	_badge.size = badge_size
-	_badge.refresh()
+	var badge_size := Vector2(badge_px, badge_px)
+	badge.size = badge_size
+	badge.refresh()
 
 	# Straddle the corner, mostly inside the anchor bounds
 	var badge_x: float
-	match badge_corner:
+	match corner:
 		BadgeCorner.BOTTOM_LEFT:
 			badge_x = anchor_origin.x - badge_size.x * 0.3
 		_:
 			badge_x = anchor_origin.x + anchor_size.x - badge_size.x * 0.7
-	_badge.position = Vector2(badge_x, anchor_origin.y + anchor_size.y - badge_size.y * 0.7)
+	badge.position = Vector2(badge_x, anchor_origin.y + anchor_size.y - badge_size.y * 0.7)
 
 func _get_size_spec() -> Dictionary:
 	return SIZE_SPECS[button_size]
@@ -778,6 +805,7 @@ func refresh_theme():
 	_update_theme()
 	if _badge:
 		_badge.refresh()
+		_badge2.refresh()
 
 func refresh_scale() -> void:
 	_update_size()
@@ -786,6 +814,9 @@ func refresh_scale() -> void:
 		_badge.custom_minimum_size = Vector2(_cached_badge_size_px, _cached_badge_size_px)
 		_badge.size = _badge.custom_minimum_size
 		_badge.refresh()
+		_badge2.custom_minimum_size = _badge.custom_minimum_size
+		_badge2.size = _badge.custom_minimum_size
+		_badge2.refresh()
 		_update_badge_position()
 	# Re-center icon/badge once layout settles: buttons whose pixel size didn't
 	# change never get NOTIFICATION_RESIZED, so without this the icon keeps the
