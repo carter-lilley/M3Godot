@@ -65,6 +65,9 @@ enum SliderOrientation { HORIZONTAL, VERTICAL }
 		_update_bubble()
 
 @export var label_formatter: String = "%.0f"
+## Shown in the bubble instead of the formatted value when the handle sits at
+## max_value (e.g. "Unlimited" for a sentinel tick appended past the range).
+@export var max_value_label: String = ""
 
 @export var show_stops: bool = true:
 	set(value):
@@ -803,7 +806,10 @@ func _update_bubble():
 		return
 	
 	_bubble.visible = true
-	_bubble_label.text = label_formatter % value
+	if max_value_label != "" and value >= max_value:
+		_bubble_label.text = max_value_label
+	else:
+		_bubble_label.text = label_formatter % value
 	_position_bubble.call_deferred()
 
 func _position_bubble():
@@ -814,6 +820,10 @@ func _position_bubble():
 	var handle_h = _get_handle_h()
 	var bubble_w = M3Units.dp(LABEL_WIDTH)
 	var bubble_h = M3Units.dp(LABEL_HEIGHT)
+	# A custom max_value_label (e.g. "Unlimited") is wider than the numeric
+	# labels the fixed width was sized for; grow the bubble to fit it.
+	if _bubble_label and max_value_label != "" and value >= max_value:
+		bubble_w = maxf(bubble_w, _bubble_label.get_combined_minimum_size().x + M3Units.dp(16))
 	
 	if _is_vertical():
 		# Position 4dp to the left of the handle (centered vertically on handle)
