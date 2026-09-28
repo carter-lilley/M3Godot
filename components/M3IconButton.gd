@@ -320,8 +320,15 @@ func _update_theme():
 	# Disabled state
 	_configure_stylebox(_cached_style_disabled, disabled_bg, radius, pad_h, -1, false, border_w, border_c)
 	
-	# Focus state (bg only — the ring is drawn globally by FocusSubManager)
-	_configure_stylebox(_cached_style_focus, display_focus, radius, pad_h, -1, false, 0, focus_border)
+	# Focus state: bg only by default because the ring is drawn globally by
+	# FocusSubManager; show_focus_border opts into a local hover fill + border
+	# for viewports without the global ring (e.g. the shuffler controls window).
+	var focus_bg = display_focus
+	var focus_border_w := 0
+	if show_focus_border:
+		focus_bg = hover_bg if not _menu_active else display_focus
+		focus_border_w = M3Units.dpi(2)
+	_configure_stylebox(_cached_style_focus, focus_bg, radius, pad_h, -1, false, focus_border_w, focus_border)
 	
 	# Hover pressed state (checked hover for toggles)
 	if button_type == Type.TOGGLE:

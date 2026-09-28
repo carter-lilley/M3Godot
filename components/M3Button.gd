@@ -265,7 +265,7 @@ func _ready():
 		mouse_entered.connect(_on_state_mouse_entered)
 	if not mouse_exited.is_connected(_on_state_mouse_exited):
 		mouse_exited.connect(_on_state_mouse_exited)
-	
+
 	# Setup tooltip
 	M3Tooltip.bind(self, m3_tooltip_text, m3_tooltip_variant)
 
