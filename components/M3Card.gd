@@ -509,7 +509,13 @@ func set_visual_draw_index(base_index: int) -> void:
 	_apply_visual_draw_index()
 
 func _apply_visual_draw_index() -> void:
-	var boost := 1000000 if has_focus() else 0
+	# The +1000000 focus boost only matters for cards sharing a visual layer:
+	# it lifts this card's items above its neighbors' items. For cards without
+	# a layer, every item here is a child of the card's own canvas item, so the
+	# boost only reorders within the card — and with frosted look it would
+	# paint the full-rect background over the real Label children (the title)
+	# while focused. So only boost when on a layer.
+	var boost := 1000000 if (has_focus() and _uses_visual_layer()) else 0
 	var idx := _base_visual_draw_index + boost
 	if _visual_bg_canvas_item.is_valid():
 		RenderingServer.canvas_item_set_draw_index(_visual_bg_canvas_item, idx)
