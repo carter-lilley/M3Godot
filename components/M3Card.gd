@@ -1337,7 +1337,11 @@ func _notification(what: int):
 			if not is_node_ready() or size.x <= 0 or size.y <= 0:
 				return
 			queue_redraw()
-			_update_media_panel_size(true)
+			# force=false: RESIZED fires after the layout pass has already
+			# recomputed bounds from custom_minimum_size. The bounds check below
+			# still triggers the stack refresh when geometry actually changed;
+			# force here duplicated the whole pipeline on every resize.
+			_update_media_panel_size(false)
 			_update_text()
 			_apply_content_scale()
 		NOTIFICATION_MOUSE_ENTER:
