@@ -694,10 +694,11 @@ func _position_dialog():
 			# Content-sized mode: analytic one-shot measure (pure function of
 			# stamped width, dp scale, and text — no frames, no layout state),
 			# then only re-clamp the stored height against new viewport sizes.
+			# Grow with the content up to the usable viewport height so buttons
+			# stay visible; only scroll when content is taller than the screen.
 			if _content_height_px <= 0.0:
 				_content_height_px = _measure_content_height(dialog_width)
-			dialog_height = clamp(_content_height_px, min_h, max_h)
-			dialog_height = min(dialog_height, max_available_height)
+			dialog_height = clamp(_content_height_px, min_h, max_available_height)
 		else:
 			# Stamped mode: height is a pure function of the viewport. Content
 			# scrolls inside; it never resizes the dialog.
@@ -743,6 +744,25 @@ func _measure_content_height(dialog_width: float) -> float:
 	var mb: float = sb.get_margin(SIDE_BOTTOM) if sb else 0.0
 	return _measure_min_height(_vbox, dialog_width - ml - mr) + mt + mb
 
+func _get_scrollbar_width(scroll: ScrollContainer) -> float:
+	var v_scroll_bar := scroll.get_v_scroll_bar()
+	if v_scroll_bar:
+		return v_scroll_bar.get_combined_minimum_size().x
+	# Default theme fallback if the scrollbar hasn't been created yet.
+	return M3Units.dp(12)
+
+func _measure_wrapped_label(label: Label, width: float) -> float:
+	if label.text.is_empty():
+		return 0.0
+	# Use the Label's own minimum-size calculation at the target width; this
+	# picks up theme line spacing, paragraph spacing, and font metrics exactly
+	# as the rendered label will, unlike a fresh TextParagraph.
+	var old_size := label.size
+	label.size.x = width
+	var min_size := label.get_minimum_size()
+	label.size = old_size
+	return min_size.y
+
 func _measure_min_height(node: Control, width: float) -> float:
 	if not node.visible:
 		return 0.0
@@ -787,38 +807,21 @@ func _measure_min_height(node: Control, width: float) -> float:
 				h = maxf(h, _measure_min_height(child, width - ml - mr) + mt + mb)
 	elif node is ScrollContainer:
 		# Measure the scrollable content, not the viewport (which reports near-zero
-		# minimum height). Taller content will simply scroll inside the stamp.
+		# minimum height). Reserve the vertical scrollbar width so wrapped text
+		# is measured at the narrower width it actually gets when the scrollbar
+		# is visible; otherwise the dialog under-grows and truncates.
+		var scroll := node as ScrollContainer
+		var scroll_width := _get_scrollbar_width(scroll)
+		var content_width := maxf(width - scroll_width, 1.0)
 		for child in node.get_children():
 			if child is Control and child.visible:
-				h = maxf(h, _measure_min_height(child, width))
+				h = maxf(h, _measure_min_height(child, content_width))
 	else:
 		# Fixed-spec controls (buttons, spacers, sliders, icons, option
 		# buttons): combined minimum is a layout-independent constant.
 		h = node.get_combined_minimum_size().y
 	return maxf(h, node.custom_minimum_size.y)
 
-## Wrapped-label height at a known width, shaped by TextServer directly —
-## identical input to what the Label renders, computed without the scene tree.
-func _measure_wrapped_label(label: Label, width: float) -> float:
-	if label.text.is_empty():
-		return 0.0
-	var font := label.get_theme_font("font")
-	var font_size := label.get_theme_font_size("font_size")
-	var p := TextParagraph.new()
-	# Same autowrap-mode -> break-flags mapping Label applies (label.cpp).
-	match label.autowrap_mode:
-		TextServer.AUTOWRAP_WORD_SMART:
-			p.break_flags = TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE
-		TextServer.AUTOWRAP_WORD:
-			p.break_flags = TextServer.BREAK_WORD_BOUND
-		TextServer.AUTOWRAP_ARBITRARY:
-			p.break_flags = TextServer.BREAK_GRAPHEME_BOUND
-		_:
-			p.break_flags = TextServer.BREAK_NONE
-	p.line_spacing = float(label.get_theme_constant("line_spacing"))
-	p.width = width
-	p.add_string(label.text, font, font_size)
-	return p.get_size().y
 
 ## Debug assertion (stamped mode only): page content's combined minimum must
 ## fit the stamped content area — content taller than the stamp is clipped by
