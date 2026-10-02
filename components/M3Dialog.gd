@@ -110,6 +110,10 @@ var _close_button: M3IconButton
 var _scroll: ScrollContainer
 var _scroll_content: VBoxContainer
 var _bottom_actions: Panel
+# Basic variant: scrollable wrapper around the body label + content slot so
+# long text or custom content cannot push the action row out of view.
+var _body_scroll: ScrollContainer
+var _body_scroll_content: VBoxContainer
 
 var _actions: Array[M3Button] = []
 var _ready_called: bool = false
@@ -374,11 +378,35 @@ func _build_basic_layout():
 	_body_content_spacer.name = "BodyContentSpacer"
 	_vbox.add_child(_body_content_spacer)
 	
+	# Scrollable body + content area. This expands to fill the dialog and
+	# scrolls when wrapped body text or tall custom content would otherwise
+	# push the action row below the dialog bounds.
+	_body_scroll = ScrollContainer.new()
+	_body_scroll.name = "BodyScroll"
+	_body_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_body_scroll.follow_focus = true
+	_vbox.add_child(_body_scroll)
+	
+	_body_scroll_content = VBoxContainer.new()
+	_body_scroll_content.name = "BodyScrollContent"
+	_body_scroll_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# EXPAND_FILL so the scroll child fills the viewport when content is short
+	# and also expands to fit tall content; SHRINK_BEGIN collapses to zero when
+	# nested children carry EXPAND_FILL, which hides the whole settings page.
+	_body_scroll_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_body_scroll.add_child(_body_scroll_content)
+	
+	# Move the body label and spacer inside the scrollable area.
+	_body_label.reparent(_body_scroll_content)
+	_body_content_spacer.reparent(_body_scroll_content)
+	
 	content_slot = VBoxContainer.new()
 	content_slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_slot.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	content_slot.clip_contents = true
-	_vbox.add_child(content_slot)
+	_body_scroll_content.add_child(content_slot)
 	
 	_divider = HSeparator.new()
 	_divider.visible = false
@@ -497,6 +525,8 @@ func _rebuild_layout():
 	_scroll = null
 	_scroll_content = null
 	_bottom_actions = null
+	_body_scroll = null
+	_body_scroll_content = null
 	_title_body_spacer = null
 	_body_content_spacer = null
 	_chrome_firewall = null
@@ -551,14 +581,19 @@ func _on_close_button_pressed() -> void:
 	dismiss()
 
 ## Return the ScrollContainer this dialog uses for content, if any.
-## Fullscreen dialogs expose _scroll; basic dialogs may have one inside content_slot.
+## Order of preference: an internal scroll inside content_slot (custom pages),
+## the basic variant's body/content scroll, then the fullscreen scroll.
 func _get_dialog_scroll_container() -> ScrollContainer:
+	# Custom pages (e.g. scene-based settings views) may bring their own scroll.
+	if content_slot:
+		var internal := _find_scroll_container_recursive(content_slot)
+		if internal:
+			return internal
+	if _body_scroll and _body_scroll.visible and _body_scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+		return _body_scroll
 	if dialog_variant == Variant.FULL_SCREEN and _scroll and _scroll.visible:
 		if _scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
 			return _scroll
-	# Basic variant: look for a nested scroll container.
-	if content_slot:
-		return _find_scroll_container_recursive(content_slot)
 	return null
 
 func _find_scroll_container_recursive(node: Node) -> ScrollContainer:
@@ -750,6 +785,12 @@ func _measure_min_height(node: Control, width: float) -> float:
 		for child in node.get_children():
 			if child is Control and child.visible:
 				h = maxf(h, _measure_min_height(child, width - ml - mr) + mt + mb)
+	elif node is ScrollContainer:
+		# Measure the scrollable content, not the viewport (which reports near-zero
+		# minimum height). Taller content will simply scroll inside the stamp.
+		for child in node.get_children():
+			if child is Control and child.visible:
+				h = maxf(h, _measure_min_height(child, width))
 	else:
 		# Fixed-spec controls (buttons, spacers, sliders, icons, option
 		# buttons): combined minimum is a layout-independent constant.
