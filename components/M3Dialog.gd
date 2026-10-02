@@ -121,6 +121,12 @@ var _anim_tween: Tween = null
 var _dismissing: bool = false
 var _scrim_alpha: float = 0.32
 
+# Right-stick scroll state so one flick scrolls once (press/release pairs are
+# delivered both as raw motion and mapped action events).
+var _right_stick_up_engaged: bool = false
+var _right_stick_down_engaged: bool = false
+const RIGHT_STICK_SCROLL_DP := 160.0
+
 # Last stamped BASIC dialog size. Stamped mode derives it from the viewport;
 # content-sized mode derives it from _content_height_px (measured once).
 var _fixed_size_px: Vector2 = Vector2.ZERO
@@ -336,6 +342,8 @@ func _build_basic_layout():
 	
 	_close_button = M3IconButton.new()
 	_close_button.icon_name = "close"
+	_close_button.badge_icon_name = "xbox-b"
+	_close_button.badge_icon_font = "ControllerIcons"
 	_close_button.pressed.connect(_on_close_button_pressed)
 	_close_button.visible = dismissible
 	top_bar_hbox.add_child(_close_button)
@@ -406,6 +414,8 @@ func _build_fullscreen_layout():
 	
 	_close_button = M3IconButton.new()
 	_close_button.icon_name = "close"
+	_close_button.badge_icon_name = "xbox-b"
+	_close_button.badge_icon_font = "ControllerIcons"
 	_close_button.pressed.connect(_on_close_button_pressed)
 	_close_button.visible = dismissible
 	
@@ -504,6 +514,29 @@ func _add_default_action():
 	if _actions.is_empty():
 		add_action("OK", Callable(), true)
 
+func _input(event: InputEvent) -> void:
+	# Right-stick up/down scrolls the dialog's scrollable content. This only
+	# runs while the dialog is visible, and we consume the event so it cannot
+	# leak to the main grid's A-Z letter carousel.
+	if visible:
+		if event.is_action_released("az_letter_prev") and _right_stick_up_engaged:
+			_right_stick_up_engaged = false
+		if event.is_action_released("az_letter_next") and _right_stick_down_engaged:
+			_right_stick_down_engaged = false
+
+		var scroll := _get_dialog_scroll_container()
+		if scroll:
+			if event.is_action_pressed("az_letter_prev") and not _right_stick_up_engaged:
+				_right_stick_up_engaged = true
+				_scroll_dialog(scroll, -1)
+				get_viewport().set_input_as_handled()
+			elif event.is_action_pressed("az_letter_next") and not _right_stick_down_engaged:
+				_right_stick_down_engaged = true
+				_scroll_dialog(scroll, 1)
+				get_viewport().set_input_as_handled()
+
+	super._input(event)
+
 func _on_action_pressed(label: String):
 	action_pressed.emit(label)
 
@@ -516,6 +549,32 @@ func _on_scrim_input(event: InputEvent):
 func _on_close_button_pressed() -> void:
 	"""Default close-button behavior; subclasses can override to customize."""
 	dismiss()
+
+## Return the ScrollContainer this dialog uses for content, if any.
+## Fullscreen dialogs expose _scroll; basic dialogs may have one inside content_slot.
+func _get_dialog_scroll_container() -> ScrollContainer:
+	if dialog_variant == Variant.FULL_SCREEN and _scroll and _scroll.visible:
+		if _scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+			return _scroll
+	# Basic variant: look for a nested scroll container.
+	if content_slot:
+		return _find_scroll_container_recursive(content_slot)
+	return null
+
+func _find_scroll_container_recursive(node: Node) -> ScrollContainer:
+	if node is ScrollContainer:
+		var scroll := node as ScrollContainer
+		if scroll.visible and scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+			return scroll
+	for child in node.get_children():
+		var found := _find_scroll_container_recursive(child)
+		if found:
+			return found
+	return null
+
+func _scroll_dialog(scroll: ScrollContainer, direction: int) -> void:
+	var step := int(M3Units.dp(RIGHT_STICK_SCROLL_DP))
+	scroll.scroll_vertical = clampi(scroll.scroll_vertical + direction * step, 0, scroll.get_v_scroll_bar().max_value as int)
 
 var _scroll_margin: MarginContainer = null
 
