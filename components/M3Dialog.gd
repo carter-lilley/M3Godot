@@ -160,6 +160,11 @@ func add_action(label: String, callback: Callable = Callable(), primary: bool = 
 	_actions.append(btn)
 	if _actions_container:
 		_actions_container.add_child(btn)
+	# Paginated dialogs rebuild their action row while already visible; carry
+	# focus to the first action of the new page so controller navigation stays
+	# anchored instead of dropping into empty space.
+	if visible and is_inside_tree() and _actions.size() == 1:
+		call_deferred("_focus_first_action")
 
 ## Clear all action buttons.
 func clear_actions():
