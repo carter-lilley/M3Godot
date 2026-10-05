@@ -551,24 +551,30 @@ func _add_default_action():
 
 func _input(event: InputEvent) -> void:
 	# Right-stick up/down scrolls the dialog's scrollable content. This only
-	# runs while the dialog is visible, and we consume the event so it cannot
-	# leak to the main grid's A-Z letter carousel.
+	# runs while the dialog is visible. The event is always consumed here so it
+	# cannot leak to the main grid's A-Z letter carousel behind the dialog —
+	# set_input_as_handled() alone doesn't stop other _input() handlers (the
+	# library view guards on it), and you're never able to do both at once.
 	if visible:
 		if event.is_action_released("az_letter_prev") and _right_stick_up_engaged:
 			_right_stick_up_engaged = false
+			get_viewport().set_input_as_handled()
 		if event.is_action_released("az_letter_next") and _right_stick_down_engaged:
 			_right_stick_down_engaged = false
+			get_viewport().set_input_as_handled()
 
-		var scroll := _get_dialog_scroll_container()
-		if scroll:
-			if event.is_action_pressed("az_letter_prev") and not _right_stick_up_engaged:
-				_right_stick_up_engaged = true
-				_scroll_dialog(scroll, -1)
-				get_viewport().set_input_as_handled()
-			elif event.is_action_pressed("az_letter_next") and not _right_stick_down_engaged:
-				_right_stick_down_engaged = true
-				_scroll_dialog(scroll, 1)
-				get_viewport().set_input_as_handled()
+		if event.is_action_pressed("az_letter_prev") and not _right_stick_up_engaged:
+			_right_stick_up_engaged = true
+			var scroll_prev := _get_dialog_scroll_container()
+			if scroll_prev:
+				_scroll_dialog(scroll_prev, -1)
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("az_letter_next") and not _right_stick_down_engaged:
+			_right_stick_down_engaged = true
+			var scroll_next := _get_dialog_scroll_container()
+			if scroll_next:
+				_scroll_dialog(scroll_next, 1)
+			get_viewport().set_input_as_handled()
 
 	super._input(event)
 

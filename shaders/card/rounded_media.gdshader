@@ -2,7 +2,7 @@ shader_type canvas_item;
 
 #include "res://shaders/card/includes/card_common.gdshaderinc"
 
-uniform sampler2D game_texture : filter_linear, repeat_disable;
+uniform sampler2D game_texture : source_color, filter_linear, repeat_disable;
 uniform float alpha = 1.0;
 
 void fragment() {
