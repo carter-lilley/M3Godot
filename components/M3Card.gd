@@ -1360,9 +1360,12 @@ func _notification(what: int):
 		NOTIFICATION_PREDELETE:
 			_free_rs_items()
 		NOTIFICATION_TRANSFORM_CHANGED:
+			# Re-stamp the visual position so RS items track the Control, but do
+			# NOT mark visuals synced here: revealing is the owning grid's job
+			# (after its FlowContainer sort), otherwise a card can flash/misplace
+			# at a stale offset mid-sort — the classic "column unglued" race.
 			if _visual_layer and _visual_layer.is_inside_tree() and is_inside_tree():
 				sync_visual_transform()
-				_mark_visuals_position_synced()
 			if has_focus():
 				FocusSubManager.notify_geometry_changed(self)
 

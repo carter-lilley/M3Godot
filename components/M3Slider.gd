@@ -784,6 +784,11 @@ func _on_drag_ended(_value_changed: bool):
 	_request_redraw()
 	_update_bubble()
 
+## True while the user is dragging (primary or range handle). Owners use this
+## to avoid reconfiguring the slider (stops/range/value) mid-drag.
+func is_dragging() -> bool:
+	return _is_dragging or _is_dragging_range
+
 # ============================================
 # BUBBLE / LABEL
 # ============================================
