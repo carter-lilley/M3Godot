@@ -50,7 +50,7 @@ var dismissible: bool = true
 var _auto_dismiss: bool = true
 var _progress_visible: bool = false
 
-var _stack_offset_index: int = 0
+var _stack_offset_px: float = 0.0
 var _hover_pauses_timer: bool = true
 
 var _anim_tween: Tween = null
@@ -164,18 +164,17 @@ func _position_snackbar():
 	var max_width = M3Units.dp(MAX_WIDTH)
 	var height = M3Units.dp(SNACKBAR_HEIGHT)
 	var extra = M3Units.dp(PROGRESS_EXTRA_HEIGHT) if _progress_visible else 0.0
-	var gap = M3Units.dp(STACK_GAP)
-	
+
 	var width: float
 	if viewport_size.x <= M3Units.dp(600):
 		width = viewport_size.x - margin * 2
 	else:
 		width = min(viewport_size.x - margin * 2, max_width)
-	
+
 	_container.size = Vector2(width, height + extra)
 	_container.position = Vector2(
 		(viewport_size.x - width) / 2.0,
-		viewport_size.y - height - extra - margin - (_stack_offset_index * (height + extra + gap))
+		viewport_size.y - height - extra - margin - _stack_offset_px
 	)
 
 func _update_appearance():
@@ -415,10 +414,27 @@ func set_auto_dismiss(enabled: bool):
 func set_hover_pauses_timer(enabled: bool):
 	_hover_pauses_timer = enabled
 
-func set_stack_offset(offset: int):
-	_stack_offset_index = offset
+## Pixel offset from the bottom edge of the stack: the cumulative stack
+## heights of every snackbar below this one, computed by the notification
+## manager. Pixel-based (not slot-index) because progress snackbars are
+## taller than plain messages, so mixed stacks need cumulative heights.
+func set_stack_offset_px(offset_px: float):
+	_stack_offset_px = offset_px
 	if is_node_ready():
 		_position_snackbar()
+
+## Vertical space this snackbar occupies in a stack, including the gap above
+## it. The notification manager sums these to compute stack offsets.
+func get_stack_height() -> float:
+	var height = M3Units.dp(SNACKBAR_HEIGHT)
+	if _progress_visible:
+		height += M3Units.dp(PROGRESS_EXTRA_HEIGHT)
+	return height + M3Units.dp(STACK_GAP)
+
+## True while the exit tween is running (dismiss() was called but the
+## dismissed signal hasn't fired yet).
+func is_dismissing() -> bool:
+	return _dismissing
 
 func show_progress(enabled: bool):
 	_progress_visible = enabled
