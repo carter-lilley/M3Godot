@@ -169,6 +169,13 @@ func _get_screen_size() -> Vector2:
 	var viewport = M3Overlay.get_sizing_viewport(get_viewport())
 	return viewport.get_visible_rect().size if viewport else Vector2(1920, 1080)
 
+## Viewport rect minus the window-chrome strip (custom title bar). Sheets dock
+## to screen edges, so their geometry must start below the chrome — it renders
+## above every overlay (ChromeLayer) and would otherwise cover the sheet's top.
+## Inset is 0 where no chrome exists (fullscreen, Android, DS SubViewport).
+func _get_usable_screen_rect() -> Rect2:
+	return M3Overlay.apply_chrome_inset(Rect2(Vector2.ZERO, _get_screen_size()))
+
 func _animate_in():
 	pass
 

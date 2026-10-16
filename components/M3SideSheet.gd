@@ -65,14 +65,15 @@ func _ready():
 func _position_sheet():
 	if not _sheet_container:
 		return
-	
+
 	var screen_size = _get_screen_size()
+	var usable := _get_usable_screen_rect()
 	var width_px = M3Units.dp(SHEET_WIDTH)
-	
-	# Position off-screen to the right initially
-	_sheet_container.position = Vector2(screen_size.x, 0)
-	_sheet_container.size = Vector2(width_px, screen_size.y)
-	
+
+	# Position off-screen to the right initially, docked below the chrome strip
+	_sheet_container.position = Vector2(screen_size.x, usable.position.y)
+	_sheet_container.size = Vector2(width_px, usable.size.y)
+
 	if sheet_variant == Variant.MODAL:
 		_update_corner_radii()
 
@@ -99,13 +100,28 @@ func refresh_scale() -> void:
 			margin.add_theme_constant_override("margin_left", M3Units.dp(CONTENT_MARGIN_LEFT))
 			margin.add_theme_constant_override("margin_right", M3Units.dp(CONTENT_MARGIN_RIGHT))
 		if visible:
-			var screen_size = _get_screen_size()
-			var width_px = M3Units.dp(SHEET_WIDTH)
-			_sheet_container.size = Vector2(width_px, screen_size.y)
-			_sheet_container.position = Vector2(screen_size.x - width_px, 0)
+			_reposition_open()
 		else:
 			_position_sheet()
 	super.refresh_scale()
+
+## Re-dock the open sheet against the current viewport and chrome inset.
+## Called on scale changes, debounced resizes/DS swaps (on_viewport_settled),
+## and chrome visibility toggles (M3Overlay.notify_chrome_inset_changed).
+func _reposition_open() -> void:
+	if not _sheet_container:
+		return
+	var screen_size := _get_screen_size()
+	var usable := _get_usable_screen_rect()
+	var width_px: float = M3Units.dp(SHEET_WIDTH)
+	_sheet_container.size = Vector2(width_px, usable.size.y)
+	_sheet_container.position = Vector2(screen_size.x - width_px, usable.position.y)
+
+## Settled-geometry hook (broadcast by OverlaySubManager on debounced resizes
+## and DS swaps, and by M3Overlay.notify_chrome_inset_changed).
+func on_viewport_settled() -> void:
+	if visible and is_inside_tree():
+		_reposition_open()
 
 # ============================================
 # ANIMATION
@@ -114,13 +130,17 @@ func refresh_scale() -> void:
 func _animate_in():
 	if not _sheet_container:
 		return
-	
+
 	var screen_size = _get_screen_size()
+	var usable := _get_usable_screen_rect()
 	var width_px = M3Units.dp(SHEET_WIDTH)
 	var start_x = screen_size.x
 	var end_x = screen_size.x - width_px
-	
-	_sheet_container.position.x = start_x
+
+	# Refresh the docked vertical geometry at show time: a chrome toggle while
+	# the sheet was hidden would otherwise leave a stale offset from _ready.
+	_sheet_container.position = Vector2(start_x, usable.position.y)
+	_sheet_container.size = Vector2(width_px, usable.size.y)
 	
 	if _scrim and sheet_variant == Variant.MODAL:
 		_scrim.modulate.a = 0

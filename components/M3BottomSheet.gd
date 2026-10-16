@@ -116,12 +116,14 @@ func _position_sheet():
 		return
 
 	var screen_size = _get_screen_size()
+	var usable := _get_usable_screen_rect()
 	var height_px = M3Units.dp(peek_height)
 	var width_px = _get_sheet_width(screen_size.x)
 	# A sheet can never be larger than its viewport; transitional states (e.g.
 	# mid dual-screen swap) can otherwise stamp off-screen garbage geometry.
+	# The height budget excludes the window-chrome strip at the top.
 	width_px = minf(width_px, screen_size.x)
-	height_px = minf(height_px, screen_size.y)
+	height_px = minf(height_px, usable.size.y)
 	var x_pos = (screen_size.x - width_px) / 2.0
 
 	# Position off-screen below initially
@@ -170,10 +172,11 @@ func _reposition_open():
 	if not _sheet_container:
 		return
 	var screen_size = _get_screen_size()
+	var usable := _get_usable_screen_rect()
 	var height_px = M3Units.dp(peek_height)
 	var width_px = _get_sheet_width(screen_size.x)
 	width_px = minf(width_px, screen_size.x)
-	height_px = minf(height_px, screen_size.y)
+	height_px = minf(height_px, usable.size.y)
 	_sheet_container.size = Vector2(width_px, height_px)
 	_sheet_container.position = Vector2((screen_size.x - width_px) / 2.0, screen_size.y - height_px)
 	M3Debug.geom("bottom_sheet", "reposition_open: screen=%s peek=%.1f scale=%.3f -> size=%s pos=%s" % [
@@ -216,6 +219,12 @@ func refresh_scale() -> void:
 	else:
 		_position_sheet()
 	super.refresh_scale()
+
+## Settled-geometry hook (broadcast by OverlaySubManager on debounced resizes
+## and DS swaps, and by M3Overlay.notify_chrome_inset_changed).
+func on_viewport_settled() -> void:
+	if visible and is_inside_tree():
+		_reposition_open()
 
 # ============================================
 # ANIMATION

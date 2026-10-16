@@ -646,11 +646,14 @@ func _calculate_size_and_position():
 	var viewport_size = Vector2(1920, 1080)
 	if viewport:
 		viewport_size = viewport.get_visible_rect().size
+	# The window-chrome strip (custom title bar) renders above menus; the top
+	# margin grows by its height so no candidate position slides under it.
+	var top_margin: float = margin + M3Overlay.get_chrome_top_inset()
 	var anchor_rect = _anchor_control.get_global_rect() if _anchor_control else Rect2(Vector2.ZERO, Vector2.ZERO)
-	
+
 	# Clamp menu size to the actual viewport so fitting is possible on small screens
 	var max_available_width = maxf(viewport_size.x - margin * 2.0, 1.0)
-	var max_available_height = maxf(viewport_size.y - margin * 2.0, 1.0)
+	var max_available_height = maxf(viewport_size.y - margin - top_margin, 1.0)
 	width = min(width, max_available_width)
 	visible_height = min(visible_height, max_available_height)
 	# For dropdowns: ensure menu is at least as wide as the anchor control, but never wider than the viewport
@@ -684,9 +687,10 @@ func _calculate_size_and_position():
 		# Last resort: use the first candidate and clamp it to the viewport
 		pos = positions[0]
 
-	# Final safety clamp so the menu is never rendered off-screen
+	# Final safety clamp so the menu is never rendered off-screen (or under
+	# the window-chrome strip).
 	pos.x = clampf(pos.x, margin, viewport_size.x - width - margin)
-	pos.y = clampf(pos.y, margin, viewport_size.y - visible_height - margin)
+	pos.y = clampf(pos.y, top_margin, viewport_size.y - visible_height - margin)
 	
 	global_position = pos
 	size = Vector2(width, visible_height)
@@ -753,10 +757,11 @@ func _compute_positions(anchor_rect: Rect2, menu_w: float, menu_h: float, gap: f
 	return positions
 
 func _position_fits(pos: Vector2, width: float, height: float, viewport_size: Vector2, margin: float, anchor_rect: Rect2, ignore_overlap: bool = false) -> bool:
-	# Must fit within viewport margins
+	# Must fit within viewport margins (top margin includes the chrome strip)
+	var top_margin := margin + M3Overlay.get_chrome_top_inset()
 	if pos.x < margin or pos.x + width > viewport_size.x - margin:
 		return false
-	if pos.y < margin or pos.y + height > viewport_size.y - margin:
+	if pos.y < top_margin or pos.y + height > viewport_size.y - margin:
 		return false
 	
 	# Must not overlap anchor (if possible)

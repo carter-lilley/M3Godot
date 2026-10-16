@@ -54,6 +54,44 @@ static func get_sizing_viewport(fallback: Viewport) -> Viewport:
 			return resolved
 	return fallback
 
+## Optional resolver for the window-chrome top inset: the height in pixels of
+## the app's custom title bar strip when it occupies the top of the viewport
+## overlays size against (desktop windowed mode; 0 in fullscreen, on Android,
+## and when the overlay parent is a dual-screen SubViewport). Registered by
+## the app's overlay manager alongside sizing_viewport_resolver.
+static var chrome_top_inset_resolver: Callable = Callable()
+
+## Height of the window-chrome strip overlays must clear, in viewport pixels.
+static func get_chrome_top_inset() -> float:
+	if chrome_top_inset_resolver.is_valid():
+		var resolved: Variant = chrome_top_inset_resolver.call()
+		if resolved is float or resolved is int:
+			return maxf(0.0, float(resolved))
+	return 0.0
+
+## Shrink a viewport-space rect from the top by the window-chrome inset, so
+## overlay content never slides under the custom title bar. No-op when the
+## chrome is inactive (inset 0). Tolerates rects that don't start at y=0
+## (e.g. safe-area intersections): only the covered part is cut away.
+static func apply_chrome_inset(rect: Rect2) -> Rect2:
+	var inset := get_chrome_top_inset()
+	if inset <= 0.0 or rect.position.y >= inset:
+		return rect
+	var cut := inset - rect.position.y
+	rect.position.y += cut
+	rect.size.y = maxf(0.0, rect.size.y - cut)
+	return rect
+
+## Notify every active overlay that the chrome inset changed (windowed <->
+## fullscreen chrome toggle without a viewport resize). Overlays implementing
+## on_viewport_settled() re-stamp their geometry against the shrunken region.
+static func notify_chrome_inset_changed() -> void:
+	_cleanup_stale_entries()
+	for type in _active.keys():
+		var overlay := _get_active_node(type)
+		if overlay != null and overlay.visible and overlay.has_method("on_viewport_settled"):
+			overlay.on_viewport_settled()
+
 # ============================================
 # EXPORTS
 # ============================================

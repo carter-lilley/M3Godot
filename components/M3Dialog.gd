@@ -277,7 +277,13 @@ func _track_size_viewport() -> void:
 func _on_host_viewport_size_changed() -> void:
 	_apply_chrome_scale()
 	# Re-stamp against the new viewport. Never re-measures content.
-	if visible and dialog_variant == Variant.BASIC and _fixed_size_px != Vector2.ZERO:
+	# FULL_SCREEN dialogs re-stamp too: the wrapper is viewport-derived, and
+	# windowed <-> fullscreen chrome toggles always come with a size change.
+	if not visible:
+		return
+	if dialog_variant == Variant.FULL_SCREEN:
+		_position_dialog()
+	elif _fixed_size_px != Vector2.ZERO:
 		_position_dialog()
 
 func _focus_first() -> void:
@@ -664,25 +670,29 @@ func _get_usable_rect() -> Rect2:
 	if not viewport:
 		return Rect2(Vector2.ZERO, Vector2(1920, 1080))
 	var viewport_rect = viewport.get_visible_rect()
-	
+
 	# For SubViewports (dual-screen mode), the viewport rect is the authoritative
 	# usable area; the screen safe-area is in root-window coordinates and may not
 	# match the SubViewport coordinate space.
 	if viewport is SubViewport:
 		return viewport_rect
-	
+
 	# For the root window, intersect the viewport with the display safe area so
 	# we don't position dialogs under system cutouts/taskbars. On desktop the safe
 	# area can be the entire monitor while the window is smaller, so this falls
 	# back to the viewport rect when it is smaller than the safe area.
+	var result: Rect2 = viewport_rect
 	var safe_area = DisplayServer.get_display_safe_area()
 	if safe_area.has_area():
 		var window_pos = DisplayServer.window_get_position()
 		var local_safe = Rect2(safe_area.position - window_pos, safe_area.size)
 		var intersection = viewport_rect.intersection(local_safe)
 		if intersection.has_area():
-			return intersection
-	return viewport_rect
+			result = intersection
+	# The custom title bar (ChromeLayer) renders above every dialog; keep the
+	# dialog region below it so neither the panel nor its shadow slide under
+	# the window controls.
+	return M3Overlay.apply_chrome_inset(result)
 
 func _is_content_sized() -> bool:
 	return dialog_variant == Variant.BASIC and not fixed_size and not fill_viewport_height
@@ -717,12 +727,15 @@ func _position_dialog():
 
 		_stamp_dialog(Vector2(dialog_width, dialog_height), viewport_pos, viewport_size)
 	else:
-		# Fullscreen: wrapper fills the full viewport (including any cutout areas).
+		# Fullscreen: wrapper fills the viewport below the window chrome strip
+		# (the custom title bar renders above every overlay and stays
+		# reachable); inset is 0 where no chrome exists (fullscreen, DS mode).
 		var sizing := M3Overlay.get_sizing_viewport(get_viewport())
 		var full_viewport_size = sizing.get_visible_rect().size if sizing else Vector2(1920, 1080)
+		var chrome_rect := M3Overlay.apply_chrome_inset(Rect2(Vector2.ZERO, full_viewport_size))
 		_dialog_wrapper.set_anchors_preset(Control.PRESET_FULL_RECT)
-		_dialog_wrapper.position = Vector2.ZERO
-		_dialog_wrapper.size = full_viewport_size
+		_dialog_wrapper.position = chrome_rect.position
+		_dialog_wrapper.size = chrome_rect.size
 
 ## Pin the container to the stamped size and center it in the wrapper. The
 ## wrapper is left un-clipped so the rounded panel corners and shadow are not

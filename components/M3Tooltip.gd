@@ -268,12 +268,15 @@ func _reposition():
 	var anchor_rect = _get_anchor_rect()
 	var viewport_size = get_viewport().get_visible_rect().size
 	var margin = M3Units.dp(VIEWPORT_MARGIN)
-	
+	# The window-chrome strip (custom title bar) renders above tooltips; the
+	# top margin grows by its height so tooltips never slide under it.
+	var top_margin: float = margin + M3Overlay.get_chrome_top_inset()
+
 	var pos: Vector2
 	if _tooltip_variant == Variant.PLAIN:
-		pos = _position_plain(anchor_rect, tooltip_size, viewport_size, margin)
+		pos = _position_plain(anchor_rect, tooltip_size, viewport_size, margin, top_margin)
 	else:
-		pos = _position_rich(anchor_rect, tooltip_size, viewport_size, margin)
+		pos = _position_rich(anchor_rect, tooltip_size, viewport_size, margin, top_margin)
 		var grid = M3Units.dp(8)
 		pos = Vector2(floor(pos.x / grid) * grid, floor(pos.y / grid) * grid)
 	
@@ -321,49 +324,49 @@ func _get_anchor_rect() -> Rect2:
 # POSITIONING
 # ============================================
 
-func _position_plain(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: Vector2, margin: float) -> Vector2:
+func _position_plain(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: Vector2, margin: float, top_margin: float) -> Vector2:
 	var offset = M3Units.dp(_get_offset_for_anchor())
 	var placement = _get_placement_for_anchor()
-	
+
 	var pos = anchor_rect.position + Vector2((anchor_rect.size.x - tooltip_size.x) / 2.0, 0)
-	
+
 	if placement == "below":
 		pos.y = anchor_rect.position.y + anchor_rect.size.y + offset
 	else:
 		pos.y = anchor_rect.position.y - tooltip_size.y - offset
-	
+
 	pos.x = clamp(pos.x, margin, viewport_size.x - tooltip_size.x - margin)
-	pos.y = clamp(pos.y, margin, viewport_size.y - tooltip_size.y - margin)
-	
+	pos.y = clamp(pos.y, top_margin, viewport_size.y - tooltip_size.y - margin)
+
 	if placement == "below" and pos.y + tooltip_size.y > viewport_size.y - margin:
 		pos.y = anchor_rect.position.y - tooltip_size.y - offset
-		pos.y = max(pos.y, margin)
-	elif placement == "above" and pos.y < margin:
+		pos.y = max(pos.y, top_margin)
+	elif placement == "above" and pos.y < top_margin:
 		pos.y = anchor_rect.position.y + anchor_rect.size.y + offset
 		pos.y = min(pos.y, viewport_size.y - tooltip_size.y - margin)
-	
+
 	return pos
 
-func _position_rich(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: Vector2, margin: float) -> Vector2:
+func _position_rich(anchor_rect: Rect2, tooltip_size: Vector2, viewport_size: Vector2, margin: float, top_margin: float) -> Vector2:
 	var gap = M3Units.dp(8)
-	
+
 	var positions = [
 		Vector2(anchor_rect.position.x + anchor_rect.size.x + gap, anchor_rect.position.y + anchor_rect.size.y + gap),
 		Vector2(anchor_rect.position.x - tooltip_size.x - gap, anchor_rect.position.y + anchor_rect.size.y + gap),
 		Vector2(anchor_rect.position.x + anchor_rect.size.x + gap, anchor_rect.position.y - tooltip_size.y - gap),
 		Vector2(anchor_rect.position.x - tooltip_size.x - gap, anchor_rect.position.y - tooltip_size.y - gap),
 	]
-	
+
 	for p in positions:
 		var fits_x = p.x >= margin and p.x + tooltip_size.x <= viewport_size.x - margin
-		var fits_y = p.y >= margin and p.y + tooltip_size.y <= viewport_size.y - margin
+		var fits_y = p.y >= top_margin and p.y + tooltip_size.y <= viewport_size.y - margin
 		var overlaps = Rect2(p, tooltip_size).intersects(anchor_rect)
 		if fits_x and fits_y and not overlaps:
 			return p
-	
+
 	var p = positions[0]
 	p.x = clamp(p.x, margin, viewport_size.x - tooltip_size.x - margin)
-	p.y = clamp(p.y, margin, viewport_size.y - tooltip_size.y - margin)
+	p.y = clamp(p.y, top_margin, viewport_size.y - tooltip_size.y - margin)
 	return p
 
 func _get_offset_for_anchor() -> float:
