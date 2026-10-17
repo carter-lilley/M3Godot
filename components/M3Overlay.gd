@@ -286,7 +286,14 @@ func dismiss():
 	dismissed.emit()
 	if _restore_focus_on_dismiss:
 		if UIManager:
-			UIManager.restore_focus(_summoner_focus, _focus_restore_fallback)
+			# Default to the Home button when no explicit fallback was installed:
+			# a stale/null capture (summoner rebuilt while we were open) must never
+			# leave controller focus nowhere. If another overlay is still open
+			# underneath, its focus pull-back reroutes focus into itself anyway.
+			var fallback := _focus_restore_fallback
+			if not fallback.is_valid():
+				fallback = UIManager.get_focus_restore_fallback_to_home()
+			UIManager.restore_focus(_summoner_focus, fallback)
 	# A persistent overlay must not leak a stale target into its next show.
 	_summoner_focus = null
 	_explicit_restore_target = false
