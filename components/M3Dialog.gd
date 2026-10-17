@@ -105,11 +105,13 @@ var _actions_container: HBoxContainer
 
 var _fullscreen_root: VBoxContainer
 var _top_bar: Panel
+var _top_bar_margin: MarginContainer
 var _top_bar_title: Label
 var _close_button: M3IconButton
 var _scroll: ScrollContainer
 var _scroll_content: VBoxContainer
 var _bottom_actions: Panel
+var _actions_margin: MarginContainer
 # Basic variant: scrollable wrapper around the body label + content slot so
 # long text or custom content cannot push the action row out of view.
 var _body_scroll: ScrollContainer
@@ -446,10 +448,18 @@ func _build_fullscreen_layout():
 	_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
 	_fullscreen_root.add_child(_top_bar)
 	
+	# Inset the bar content so the title and close button don't touch the
+	# screen edges; uses the same padding as the scroll content below.
+	_top_bar_margin = MarginContainer.new()
+	_top_bar_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var chrome_pad = M3Units.dp(PADDING)
+	_top_bar_margin.add_theme_constant_override("margin_left", chrome_pad)
+	_top_bar_margin.add_theme_constant_override("margin_right", chrome_pad)
+	_top_bar.add_child(_top_bar_margin)
+	
 	var top_hbox = HBoxContainer.new()
-	top_hbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	top_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	_top_bar.add_child(top_hbox)
+	_top_bar_margin.add_child(top_hbox)
 	
 	_close_button = M3IconButton.new()
 	_close_button.icon_name = "close"
@@ -510,11 +520,18 @@ func _build_fullscreen_layout():
 	_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_ACTIONS_HEIGHT))
 	_fullscreen_root.add_child(_bottom_actions)
 	
+	# Same edge inset as the top bar, so the footer buttons align with the
+	# title and scroll content instead of touching the screen edge.
+	_actions_margin = MarginContainer.new()
+	_actions_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_actions_margin.add_theme_constant_override("margin_left", chrome_pad)
+	_actions_margin.add_theme_constant_override("margin_right", chrome_pad)
+	_bottom_actions.add_child(_actions_margin)
+	
 	_actions_container = HBoxContainer.new()
-	_actions_container.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_actions_container.alignment = BoxContainer.ALIGNMENT_END
 	_actions_container.add_theme_constant_override("separation", M3Units.dp(ACTIONS_GAP))
-	_bottom_actions.add_child(_actions_container)
+	_actions_margin.add_child(_actions_container)
 	
 	_dialog_container.set_anchors_preset(Control.PRESET_FULL_RECT)
 
@@ -533,9 +550,11 @@ func _rebuild_layout():
 	_vbox = null
 	_fullscreen_root = null
 	_top_bar = null
+	_top_bar_margin = null
 	_scroll = null
 	_scroll_content = null
 	_bottom_actions = null
+	_actions_margin = null
 	_body_scroll = null
 	_body_scroll_content = null
 	_title_body_spacer = null
@@ -639,12 +658,18 @@ func _apply_chrome_scale() -> void:
 	if dialog_variant != Variant.FULL_SCREEN or not is_inside_tree():
 		return
 	var small := _is_small_screen()
+	var pad := M3Units.dp(COMPACT_PADDING if small else PADDING)
 	if is_instance_valid(_scroll_margin):
-		var pad := M3Units.dp(COMPACT_PADDING if small else PADDING)
 		_scroll_margin.add_theme_constant_override("margin_left", pad)
 		_scroll_margin.add_theme_constant_override("margin_right", pad)
 		_scroll_margin.add_theme_constant_override("margin_top", pad)
 		_scroll_margin.add_theme_constant_override("margin_bottom", pad)
+	if is_instance_valid(_top_bar_margin):
+		_top_bar_margin.add_theme_constant_override("margin_left", pad)
+		_top_bar_margin.add_theme_constant_override("margin_right", pad)
+	if is_instance_valid(_actions_margin):
+		_actions_margin.add_theme_constant_override("margin_left", pad)
+		_actions_margin.add_theme_constant_override("margin_right", pad)
 	if is_instance_valid(_top_bar):
 		_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BAR_HEIGHT if small else FULLSCREEN_TOP_BAR_HEIGHT))
 	if is_instance_valid(_bottom_actions):
@@ -1009,14 +1034,20 @@ func _update_sizes():
 	else:
 		if _top_bar:
 			_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
+		var pad = M3Units.dp(PADDING)
 		if _scroll and _scroll.get_child_count() > 0:
 			var scroll_margin = _scroll.get_child(0)
 			if scroll_margin is MarginContainer:
-				var pad = M3Units.dp(PADDING)
 				scroll_margin.add_theme_constant_override("margin_left", pad)
 				scroll_margin.add_theme_constant_override("margin_right", pad)
 				scroll_margin.add_theme_constant_override("margin_top", pad)
 				scroll_margin.add_theme_constant_override("margin_bottom", pad)
+		if _top_bar_margin:
+			_top_bar_margin.add_theme_constant_override("margin_left", pad)
+			_top_bar_margin.add_theme_constant_override("margin_right", pad)
+		if _actions_margin:
+			_actions_margin.add_theme_constant_override("margin_left", pad)
+			_actions_margin.add_theme_constant_override("margin_right", pad)
 		if _scroll_content:
 			_scroll_content.add_theme_constant_override("separation", M3Units.dp(16))
 		if _bottom_actions:
