@@ -276,6 +276,10 @@ func _fit_text():
 # ============================================
 
 func start_timer(duration_ms: int = 4000):
+	if _timer == null:
+		# _setup_timer() only runs in _ready(); a snackbar that never entered
+		# the tree (e.g. add_child refused on a blocked parent) has no timer.
+		return
 	_timer.wait_time = duration_ms / 1000.0
 	_timer.start()
 
@@ -325,7 +329,8 @@ func dismiss():
 	if _dismissing:
 		return
 	_dismissing = true
-	_timer.stop()
+	if _timer:
+		_timer.stop()
 	if Engine.is_editor_hint() or not is_inside_tree():
 		super.dismiss()
 		return
