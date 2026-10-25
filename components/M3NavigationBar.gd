@@ -10,7 +10,7 @@ extends M3Navigation
 # SIZE SPECS (all values in dp)
 # ============================================
 
-const HEIGHT_COMPACT := 64
+const HEIGHT_COMPACT := 52
 const HEIGHT_EXPANDED := 80
 const MIN_ITEM_WIDTH := 80
 const MAX_ITEM_WIDTH := 168

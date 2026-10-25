@@ -11,7 +11,7 @@ enum MenuGravity { TOP, CENTER, BOTTOM }
 # SIZE SPECS (all values in dp)
 # ============================================
 
-const WIDTH_COLLAPSED := 80
+const WIDTH_COLLAPSED := 64
 const WIDTH_EXPANDED := 220
 const WIDTH_ICON_ONLY := 56
 const WIDTH_SMALL := 48
@@ -22,7 +22,7 @@ const ITEM_HEIGHT_EXPANDED := 56
 
 # M3-aligned compact widths (collapsed mode) and heights for crowded rails.
 const COMPACT_WIDTHS = {
-	M3NavigationDestination.CompactLevel.NONE: 80,
+	M3NavigationDestination.CompactLevel.NONE: 64,
 	M3NavigationDestination.CompactLevel.ICON_ONLY: 56,
 	M3NavigationDestination.CompactLevel.SMALL: 48,
 	M3NavigationDestination.CompactLevel.EXTRA_SMALL: 40,
