@@ -357,8 +357,19 @@ func _on_submenu_requested(index: int):
 	# Tell parent renderer about the submenu's rect so it doesn't dismiss on clicks inside it
 	if _renderer and _submenu != null and is_instance_valid(_submenu):
 		_renderer.set_submenu_rect(_submenu.get_menu_rect())
+		# The submenu's rect can settle a frame after popup (deferred layout,
+		# open animation); keep the parent's no-dismiss zone synced, or a tap
+		# inside the visible submenu reads as an outside click against the
+		# stale rect and instantly closes it (touch-only, since controllers
+		# never generate pointer events).
+		if _submenu._renderer and not _submenu._renderer.resized.is_connected(_on_submenu_renderer_resized):
+			_submenu._renderer.resized.connect(_on_submenu_renderer_resized)
 		if not _submenu.dismissed.is_connected(_on_submenu_dismissed):
 			_submenu.dismissed.connect(_on_submenu_dismissed, CONNECT_ONE_SHOT)
+
+func _on_submenu_renderer_resized() -> void:
+	if _renderer and _submenu and is_instance_valid(_submenu) and _submenu.is_open():
+		_renderer.set_submenu_rect(_submenu.get_menu_rect())
 
 func _on_submenu_dismissed():
 	# If the submenu had an item selected, close the parent menu too
@@ -385,6 +396,9 @@ func _close_submenu(restore_focus: bool = true):
 		if _submenu.dismissed.is_connected(_on_submenu_dismissed):
 			_submenu.dismissed.disconnect(_on_submenu_dismissed)
 		_submenu.dismiss()
+	if _submenu and is_instance_valid(_submenu) and _submenu._renderer:
+		if _submenu._renderer.resized.is_connected(_on_submenu_renderer_resized):
+			_submenu._renderer.resized.disconnect(_on_submenu_renderer_resized)
 
 	if _renderer and _submenu_item_index >= 0:
 		if restore_focus:
@@ -404,13 +418,19 @@ func _on_focus_changed(index: int):
 	if _submenu and _submenu.is_open() and index != _submenu_item_index:
 		_close_submenu(false)
 
-## Move focus to the submenu's first focusable item without re-popping it.
+## Move focus to the open submenu's first focusable item without re-popping
+## it. Must target the SUBMENU's renderer: grabbing this menu's own first item
+## emits focus_changed(0), which _on_focus_changed reads as "focus moved to a
+## different parent item" and closes the submenu that was just requested.
 func grab_first_item_focus() -> void:
-	if _renderer == null:
+	var target: M3Menu = self
+	if _submenu and is_instance_valid(_submenu) and _submenu.is_open():
+		target = _submenu
+	if target._renderer == null:
 		return
-	var idx: int = _renderer._get_first_focusable_index()
+	var idx: int = target._renderer._get_first_focusable_index()
 	if idx >= 0:
-		_renderer.grab_item_focus(idx)
+		target._renderer.grab_item_focus(idx)
 
 func _on_overlay_focus_changed(control: Control) -> void:
 	# If a submenu is open, its focus is outside this menu's subtree, so the

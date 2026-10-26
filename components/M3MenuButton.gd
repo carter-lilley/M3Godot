@@ -13,8 +13,14 @@ const DRAG_THRESHOLD_DP: float = 10.0
 # them on touchscreens) can be told apart from injected second-screen taps
 # (AynThor push_input), which arrive as emulated mouse events with no
 # preceding real touch.
-var _last_real_touch_frame: int = -100
+# A time window is used instead of frame equality: on some devices the
+# emulated mouse event is delivered a frame or two AFTER the real touch, so a
+# same-frame check lets the duplicate through and a single tap activates the
+# item twice.
+var _last_real_touch_msec: int = -10000
 var _last_real_touch_pos: Vector2 = Vector2.ZERO
+const EMULATED_TOUCH_DEDUP_MS: int = 500
+const EMULATED_TOUCH_DEDUP_PX: float = 8.0
 
 func _ready():
 	# Handle mouse activation ourselves so we can distinguish taps from scroll drags.
@@ -24,7 +30,7 @@ func _gui_input(event: InputEvent):
 	# Native touch handling. Events are never accept_event()'d here so the
 	# parent ScrollContainer still receives them for drag scrolling.
 	if event is InputEventScreenTouch:
-		_last_real_touch_frame = Engine.get_process_frames()
+		_last_real_touch_msec = Time.get_ticks_msec()
 		_last_real_touch_pos = event.position
 		if event.pressed:
 			_press_start_pos = event.position
@@ -45,8 +51,8 @@ func _gui_input(event: InputEvent):
 
 	if event is InputEventMouseButton:
 		if event.device == InputEvent.DEVICE_ID_EMULATION \
-				and Engine.get_process_frames() == _last_real_touch_frame \
-				and event.position.distance_to(_last_real_touch_pos) < 4.0:
+				and Time.get_ticks_msec() - _last_real_touch_msec < EMULATED_TOUCH_DEDUP_MS \
+				and event.position.distance_to(_last_real_touch_pos) < EMULATED_TOUCH_DEDUP_PX:
 			# Engine-emulated duplicate of the touch already handled above.
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT:

@@ -649,15 +649,38 @@ func _scroll_dialog(scroll: ScrollContainer, direction: int) -> void:
 
 var _scroll_margin: MarginContainer = null
 
-## Compact fullscreen chrome for small screens (viewport < 600dp wide or
-## < 700dp tall, per _is_small_screen): tighter padding and shorter bars.
+## Compact chrome for small screens (viewport < 600dp wide or < 700dp tall,
+## per _is_small_screen): tighter padding and shorter bars. Applies to both
+## variants — FULL_SCREEN margins/bars, BASIC top bar/close button/actions.
 const COMPACT_PADDING := 12.0
 const COMPACT_BAR_HEIGHT := 48.0
+## BASIC-variant compact chrome: shorter top bar, smaller close button and
+## title, shorter actions row.
+const COMPACT_BASIC_TOP_BAR_HEIGHT := 48.0
+const COMPACT_BASIC_ACTIONS_HEIGHT := 40.0
+const COMPACT_TITLE_FONT_SIZE := 18.0
+const TITLE_FONT_SIZE := 22.0
 
 func _apply_chrome_scale() -> void:
-	if dialog_variant != Variant.FULL_SCREEN or not is_inside_tree():
+	if not is_inside_tree():
 		return
 	var small := _is_small_screen()
+	if dialog_variant == Variant.BASIC:
+		if _vbox:
+			var top_bar_hbox := _vbox.get_node_or_null("TopBar") as HBoxContainer
+			if top_bar_hbox:
+				top_bar_hbox.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BASIC_TOP_BAR_HEIGHT if small else FULLSCREEN_TOP_BAR_HEIGHT))
+		if is_instance_valid(_close_button):
+			_close_button.icon_button_size = M3IconButton.IconSize.SMALL if small else M3IconButton.IconSize.MEDIUM
+		if is_instance_valid(_top_bar_title):
+			if _cached_fonts.is_empty():
+				_cached_fonts = M3Theme.load_fonts()
+			_style_label(_top_bar_title, _cached_fonts["regular"], M3Units.dp(COMPACT_TITLE_FONT_SIZE if small else TITLE_FONT_SIZE), M3Theme.get_on_surface())
+		if _actions_container:
+			_actions_container.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BASIC_ACTIONS_HEIGHT if small else BASIC_ACTIONS_HEIGHT))
+		return
+	if dialog_variant != Variant.FULL_SCREEN:
+		return
 	var pad := M3Units.dp(COMPACT_PADDING if small else PADDING)
 	if is_instance_valid(_scroll_margin):
 		_scroll_margin.add_theme_constant_override("margin_left", pad)
@@ -676,11 +699,7 @@ func _apply_chrome_scale() -> void:
 		_bottom_actions.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BAR_HEIGHT if small else FULLSCREEN_ACTIONS_HEIGHT))
 
 func _is_small_screen() -> bool:
-	var viewport := M3Overlay.get_sizing_viewport(get_viewport())
-	if not viewport:
-		return false
-	var viewport_size = viewport.get_visible_rect().size
-	return viewport_size.x < M3Units.dp(600) or viewport_size.y < M3Units.dp(700)
+	return DisplaySubManager.is_cramped_viewport(M3Overlay.get_sizing_viewport(get_viewport()))
 
 func _focus_first_action() -> void:
 	for btn in _actions:
@@ -936,7 +955,7 @@ func _update_appearance():
 		# clip_children would nest with M3Card's own clip_children and cause
 		# M3Card children to render behind the card background.
 		
-		_style_label(_top_bar_title, fonts["regular"], M3Units.dp(22), M3Theme.get_on_surface())
+		_style_label(_top_bar_title, fonts["regular"], M3Units.dp(COMPACT_TITLE_FONT_SIZE if _is_small_screen() else TITLE_FONT_SIZE), M3Theme.get_on_surface())
 		_style_label(_title_label, fonts["regular"], M3Units.dp(24), M3Theme.get_on_surface())
 		_style_label(_body_label, fonts["regular"], M3Units.dp(14), M3Theme.get_on_surface_variant())
 		
@@ -1021,16 +1040,19 @@ func refresh_theme():
 
 func _update_sizes():
 	if dialog_variant == Variant.BASIC:
+		# Tier-aware like _apply_chrome_scale: a scale refresh must not
+		# clobber the compact chrome on small screens.
+		var small := _is_small_screen()
 		if _vbox:
 			var top_bar_hbox = _vbox.get_node_or_null("TopBar")
 			if top_bar_hbox:
-				top_bar_hbox.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))
+				top_bar_hbox.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BASIC_TOP_BAR_HEIGHT if small else FULLSCREEN_TOP_BAR_HEIGHT))
 		if _title_body_spacer:
-			_title_body_spacer.custom_minimum_size = Vector2(0, M3Units.dp(16))
+			_title_body_spacer.custom_minimum_size = Vector2(0, M3Units.dp(8 if small else 16))
 		if _body_content_spacer:
-			_body_content_spacer.custom_minimum_size = Vector2(0, M3Units.dp(24))
+			_body_content_spacer.custom_minimum_size = Vector2(0, M3Units.dp(12 if small else 24))
 		if _actions_container:
-			_actions_container.custom_minimum_size = Vector2(0, M3Units.dp(BASIC_ACTIONS_HEIGHT))
+			_actions_container.custom_minimum_size = Vector2(0, M3Units.dp(COMPACT_BASIC_ACTIONS_HEIGHT if small else BASIC_ACTIONS_HEIGHT))
 	else:
 		if _top_bar:
 			_top_bar.custom_minimum_size = Vector2(0, M3Units.dp(FULLSCREEN_TOP_BAR_HEIGHT))

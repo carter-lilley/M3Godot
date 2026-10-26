@@ -24,6 +24,20 @@ enum Variant { FILLED, OUTLINED }
 			_update_layout()
 			queue_redraw()
 
+## Shorter container for cramped layouts (compact settings rows, which carry
+## their own label so no floating label competes for the reduced height).
+@export var dense: bool = false:
+	set(value):
+		if value == dense:
+			return
+		dense = value
+		if _ready_called:
+			# Re-stamp the height minimum: the container height drives it.
+			# (Settings rows only ever manage custom_minimum_size.x.)
+			custom_minimum_size.y = _get_minimum_size().y
+			_update_layout()
+			queue_redraw()
+
 @export var label_text: String = "":
 	set(value):
 		if value == label_text:
@@ -112,6 +126,7 @@ signal field_focus_exited
 # ============================================
 
 const CONTAINER_HEIGHT := 56.0
+const DENSE_CONTAINER_HEIGHT := 40.0
 const H_PADDING := 16.0
 const ICON_SIZE := 24.0
 const ICON_GAP := 12.0
@@ -409,7 +424,7 @@ func _draw():
 		if not is_equal_approx(_label_float_t, target):
 			_label_float_t = target
 			_update_layout()
-	var container_height = M3Units.dp(CONTAINER_HEIGHT)
+	var container_height = M3Units.dp(_container_height_dp())
 	var rect = Rect2(Vector2.ZERO, Vector2(size.x, container_height))
 	
 	var has_error = not error_text.is_empty()
@@ -501,7 +516,7 @@ func _update_bg_panel():
 	if not _bg_panel:
 		return
 	
-	var container_height = M3Units.dp(CONTAINER_HEIGHT)
+	var container_height = M3Units.dp(_container_height_dp())
 	var rect = Rect2(Vector2.ZERO, Vector2(size.x, container_height))
 	
 	if field_variant == Variant.FILLED:
@@ -619,7 +634,7 @@ func _update_layout():
 	var h_padding = M3Units.dp(H_PADDING)
 	var icon_size = M3Units.dp(ICON_SIZE)
 	var icon_gap = M3Units.dp(ICON_GAP)
-	var container_height = M3Units.dp(CONTAINER_HEIGHT)
+	var container_height = M3Units.dp(_container_height_dp())
 	
 	# Update background panel size
 	if _bg_panel:
@@ -815,6 +830,9 @@ func _should_float_label() -> bool:
 # SIZE
 # ============================================
 
+func _container_height_dp() -> float:
+	return DENSE_CONTAINER_HEIGHT if dense else CONTAINER_HEIGHT
+
 func _get_minimum_size() -> Vector2:
 	var min_width = M3Units.dp(H_PADDING * 2)
 	if not leading_icon.is_empty():
@@ -826,7 +844,7 @@ func _get_minimum_size() -> Vector2:
 	if not suffix_text.is_empty():
 		min_width += M3Units.dp(20)
 	
-	var min_height = M3Units.dp(CONTAINER_HEIGHT)
+	var min_height = M3Units.dp(_container_height_dp())
 	
 	if not supporting_text.is_empty() or not error_text.is_empty():
 		min_height += M3Units.dp(SUPPORTING_HEIGHT)

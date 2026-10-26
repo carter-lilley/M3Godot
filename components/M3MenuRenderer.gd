@@ -73,6 +73,12 @@ var _multi_select: bool = false
 var _radio_group: bool = false
 var _submenu_mode: bool = false
 var _submenu_rect: Rect2 = Rect2()
+## Popup timestamp. Touch taps deliver emulated mouse-button events, and the
+## tail of the same gesture that opened a (sub)menu can arrive right as it
+## becomes visible; the outside-click dismissal ignores presses for a short
+## window so that gesture can't instantly self-dismiss the menu.
+var _opened_msec: int = 0
+const OPEN_DISMISS_GRACE_MS: int = 400
 ## Rect to cover when no submenu position fits on screen (small-screen
 ## fallback): the parent menu's rect, supplied by M3Menu.
 var _cover_rect: Rect2 = Rect2()
@@ -168,6 +174,7 @@ func popup(items: Array[M3MenuItem], anchor: Control, variant: ColorVariant = Co
 	_build_items()
 	_update_appearance()
 	_calculate_size_and_position()
+	_opened_msec = Time.get_ticks_msec()
 	
 	visible = true
 
@@ -796,7 +803,8 @@ func _input(event: InputEvent):
 	if _popup_tween and _popup_tween.is_running():
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if not get_global_rect().has_point(event.global_position):
+		var in_grace := Time.get_ticks_msec() - _opened_msec < OPEN_DISMISS_GRACE_MS
+		if not in_grace and not get_global_rect().has_point(event.global_position):
 			# Don't dismiss if the click is inside an open submenu or the scroll container
 			if not _submenu_rect.has_point(event.global_position):
 				if not (_scroll and _scroll.get_global_rect().has_point(event.global_position)):
